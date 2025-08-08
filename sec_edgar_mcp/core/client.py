@@ -1,9 +1,8 @@
 from typing import Optional
-from edgar import Company, set_identity, find_company, search
+from edgar import Company, set_identity, find_company
 from ..utils.cache import TickerCache
 from ..utils.exceptions import CompanyNotFoundError
 from ..config import initialize_config
-import edgar
 
 
 class EdgarClient:
@@ -13,8 +12,6 @@ class EdgarClient:
         self._user_agent = initialize_config()
         # Set identity for edgar-tools
         set_identity(self._user_agent)
-        # Also set the default user agent
-        edgar.set_identity(self._user_agent)
         self._ticker_cache = TickerCache(self._user_agent)
 
     def get_company(self, identifier: str) -> Company:
@@ -51,23 +48,37 @@ class EdgarClient:
     def search_companies(self, query: str, limit: int = 10) -> list:
         """Search for companies by name."""
         try:
-            # Use edgar-tools search functionality
-            results = search(query)
-
-            # Convert to list format and limit results
+            # Use edgartools find_company functionality
+            search_results = find_company(query)
+            
             companies = []
-            for i, result in enumerate(results):
-                if i >= limit:
-                    break
-                companies.append({"cik": result.cik, "name": result.name, "tickers": getattr(result, "tickers", [])})
+            if search_results:
+                # Handle different result types from find_company
+                if hasattr(search_results, '__iter__') and not isinstance(search_results, str):
+                    # Multiple results
+                    for result in list(search_results)[:limit]:
+                        if hasattr(result, 'cik'):
+                            companies.append({
+                                "cik": str(result.cik).zfill(10), 
+                                "name": getattr(result, 'name', str(result)), 
+                                "tickers": getattr(result, "tickers", [])
+                            })
+                else:
+                    # Single result
+                    if hasattr(search_results, 'cik'):
+                        companies.append({
+                            "cik": str(search_results.cik).zfill(10), 
+                            "name": getattr(search_results, 'name', str(search_results)), 
+                            "tickers": getattr(search_results, "tickers", [])
+                        })
 
             return companies
         except Exception:
-            # Fallback to find_company if search fails
+            # Fallback: try direct company lookup by ticker
             try:
-                company = find_company(query)
-                if company:
-                    return [{"cik": company.cik, "name": company.name, "tickers": getattr(company, "tickers", [])}]
+                company = Company(query)
+                if hasattr(company, 'cik'):
+                    return [{"cik": str(company.cik).zfill(10), "name": getattr(company, 'name', query), "tickers": [query]}]
             except Exception:
                 pass
 

@@ -1,0 +1,22 @@
+build:
+  dockerBuildPath: .
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      userAgent:
+        type: string
+        description: Optional user agent string for SEC EDGAR API requests (defaults to edgartools default)
+        default: "Adu Subramanian (1wholepackage@gmail.com)"
+    additionalProperties: false
+  commandFunction: |-
+    (config) => ({
+      command: 'python',
+      args: ['-m', 'sec_edgar_mcp.server'],
+      env: config.userAgent ? { 'EDGAR_USER_AGENT': config.userAgent } : {}
+    })
+
+exampleConfig:
+  userAgent: "Adu Subramanian (1wholepackage@gmail.com)"

@@ -27,7 +27,7 @@ class FilingsTools:
                 company = self.client.get_company(identifier)
                 filings = company.get_filings(form=form_type)
             else:
-                # Global filings using edgar-tools get_filings()
+                # Global filings using edgartools get_filings()
                 filings = get_filings(form=form_type, count=limit)
 
             # Limit results
@@ -132,8 +132,18 @@ class FilingsTools:
             # Get the 8-K object
             eightk = filing.obj()
 
+            raw_date = getattr(eightk, "date_of_report", None)
+            formatted_date = None
+            if isinstance(raw_date, datetime):
+                formatted_date = raw_date.isoformat()
+            elif isinstance(raw_date, str):
+                try:
+                    formatted_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).isoformat()
+                except ValueError:
+                    formatted_date = raw_date  # Return original string if parsing fails
+
             analysis: Dict[str, Any] = {
-                "date_of_report": eightk.date_of_report.isoformat() if hasattr(eightk, "date_of_report") else None,
+                "date_of_report": formatted_date,
                 "items": getattr(eightk, "items", []),
                 "events": {},
             }

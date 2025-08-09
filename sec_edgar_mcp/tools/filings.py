@@ -122,13 +122,15 @@ class FilingsTools:
     ) -> Dict[str, Union[bool, str, Dict[str, Any]]]:
         """Analyze an 8-K filing for specific events."""
         import time
+        import logging
+        logging.basicConfig(filename="sec_edgar_mcp_analyze8k.log", level=logging.DEBUG)
         try:
             start_total = time.time()
-            print(f"[DEBUG] analyze_8k: Start for {identifier}, accession: {accession_number}")
+            logging.debug(f"[DEBUG] analyze_8k: Start for {identifier}, accession: {accession_number}")
 
             start_company = time.time()
             company = self.client.get_company(identifier)
-            print(f"[DEBUG] analyze_8k: company.get_company() took {time.time() - start_company:.2f}s")
+            logging.debug(f"[DEBUG] analyze_8k: company.get_company() took {time.time() - start_company:.2f}s")
 
             start_filings = time.time()
             filing = None
@@ -136,16 +138,16 @@ class FilingsTools:
                 if f.accession_number.replace("-", "") == accession_number.replace("-", ""):
                     filing = f
                     break
-            print(f"[DEBUG] analyze_8k: company.get_filings() loop took {time.time() - start_filings:.2f}s")
+            logging.debug(f"[DEBUG] analyze_8k: company.get_filings() loop took {time.time() - start_filings:.2f}s")
 
             if not filing:
-                print(f"[DEBUG] analyze_8k: Filing not found, total time: {time.time() - start_total:.2f}s")
+                logging.debug(f"[DEBUG] analyze_8k: Filing not found, total time: {time.time() - start_total:.2f}s")
                 raise FilingNotFoundError(f"8-K filing {accession_number} not found")
 
             start_obj = time.time()
             eightk = filing.obj()
-            print(f"[DEBUG] analyze_8k: filing.obj() took {time.time() - start_obj:.2f}s")
-            print(f"[DEBUG] analyze_8k: Successfully parsed 8-K object: {type(eightk)}")
+            logging.debug(f"[DEBUG] analyze_8k: filing.obj() took {time.time() - start_obj:.2f}s")
+            logging.debug(f"[DEBUG] analyze_8k: Successfully parsed 8-K object: {type(eightk)}")
 
             raw_date = getattr(eightk, "date_of_report", None)
             formatted_date = None

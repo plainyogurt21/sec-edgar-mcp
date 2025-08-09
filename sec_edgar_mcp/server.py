@@ -4,7 +4,7 @@ from sec_edgar_mcp.tools import CompanyTools, FilingsTools, FinancialTools, Insi
 
 
 # Initialize MCP server
-mcp = FastMCP("SEC EDGAR MCP", dependencies=["edgartools"])
+mcp = FastMCP("SEC EDGAR MCP", dependencies=["edgartools"], request_timeout=300 )
 
 # Add system-wide instructions for deterministic responses
 DETERMINISTIC_INSTRUCTIONS = """

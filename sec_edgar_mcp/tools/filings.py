@@ -144,6 +144,41 @@ class FilingsTools:
                 else:
                     date_of_report = str(raw_date) if raw_date else None
 
+            main_text = filing.text()
+            sections = []
+            # Main 8-K filing content as first section
+            sections.append({
+                "type": "8-K",
+                "label": "Main Filing",
+                "content": main_text[:10000] if len(main_text) > 10000 else main_text,
+                "content_truncated": len(main_text) > 10000
+            })
+
+            # Add each exhibit as its own section
+            if hasattr(filing, "exhibits"):
+                try:
+                    for idx, exhibit in enumerate(list(filing.exhibits)):
+                        exhibit_content = ""
+                        if hasattr(exhibit, "text"):
+                            try:
+                                exhibit_content = exhibit.text()
+                            except Exception:
+                                exhibit_content = "[Unable to extract content]"
+                        label = getattr(exhibit, "description", f"Exhibit {idx+1}")
+                        sections.append({
+                            "type": "exhibit",
+                            "label": label,
+                            "content": exhibit_content[:10000] if len(exhibit_content) > 10000 else exhibit_content,
+                            "content_truncated": len(exhibit_content) > 10000
+                        })
+                except Exception as e:
+                    sections.append({
+                        "type": "exhibit",
+                        "label": "Exhibits Error",
+                        "content": f"Error extracting exhibits: {str(e)}",
+                        "content_truncated": False
+                    })
+
             analysis: Dict[str, Any] = {
                 "filing_info": {
                     "accession_number": filing.accession_number,
@@ -155,8 +190,7 @@ class FilingsTools:
                 "date_of_report": date_of_report,
                 "items": getattr(eightk, "items", []),
                 "events": {},
-                "full_text": filing.text(),
-                "exhibits": []
+                "sections": sections
             }
 
             # Check for common 8-K items
@@ -178,76 +212,6 @@ class FilingsTools:
             for item_code, description in item_descriptions.items():
                 if hasattr(eightk, "has_item") and eightk.has_item(item_code):
                     analysis["events"][item_code] = {"present": True, "description": description}
-
-            # Extract exhibits text only
-            if hasattr(filing, "exhibits"):
-                try:
-                    for exhibit in list(filing.exhibits):
-                        exhibit_info = {
-                            "description": getattr(exhibit, 'description', str(exhibit)),
-                            "document": getattr(exhibit, 'document', None),
-                            "content": None
-                        }
-                        
-                        # Try to get exhibit text content
-                        try:
-                            if hasattr(exhibit, 'text'):
-                                exhibit_content = exhibit.text()
-                                # Limit content size for reasonable response
-                                if len(exhibit_content) > 1000:
-                                    exhibit_info["content"] = exhibit_content[:1000] + "\n\n... [truncated - content too long]"
-                                    exhibit_info["content_truncated"] = True
-                                    exhibit_info["original_length"] = len(exhibit_content)
-                                else:
-                                    exhibit_info["content"] = exhibit_content
-                                    exhibit_info["content_truncated"] = False
-                        except Exception:
-                            exhibit_info["content"] = "[Unable to extract content]"
-                        
-                        analysis["exhibits"].append(exhibit_info)
-                except Exception as e:
-                    analysis["exhibits_error"] = f"Error extracting exhibits: {str(e)}"
-
-            # Check for press releases with enhanced content
-            if hasattr(eightk, "has_press_release"):
-                analysis["has_press_release"] = eightk.has_press_release
-                analysis["press_releases"] = []
-                
-                if eightk.has_press_release and hasattr(eightk, "press_releases"):
-                    press_releases = eightk.press_releases
-                    
-                    if hasattr(press_releases, 'attachments'):
-                        try:
-                            for pr_attachment in list(press_releases.attachments):
-                                pr_info = {
-                                    "description": getattr(pr_attachment, 'description', str(pr_attachment)),
-                                    "content": None
-                                }
-                                
-                                try:
-                                    pr_content = pr_attachment.text()
-                                    # Limit press release content size
-                                    if len(pr_content) > 1000:
-                                        pr_info["content"] = pr_content[:1000] + "\n\n... [truncated - content too long]"
-                                        pr_info["content_truncated"] = True
-                                        pr_info["original_length"] = len(pr_content)
-                                    else:
-                                        pr_info["content"] = pr_content
-                                        pr_info["content_truncated"] = False
-                                except Exception:
-                                    pr_info["content"] = "[Unable to extract press release content]"
-                                
-                                analysis["press_releases"].append(pr_info)
-                        except Exception as e:
-                            analysis["press_releases"] = [{"error": f"Error extracting press releases: {str(e)}"}]
-
-            # Add summary statistics
-            analysis["summary"] = {
-                "total_exhibits": len(analysis["exhibits"]),
-                "total_press_releases": len(analysis["press_releases"]),
-                "full_text_length": len(analysis["full_text"]),
-                "has_events": len(analysis["events"]) > 0
-            }
 
             return {"success": True, "analysis": analysis}
         except Exception as e:

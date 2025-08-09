@@ -45,3 +45,13 @@ Tools for insider trading data (Forms 3, 4, 5) - simplified version.
 *   **`get_form4_details(identifier: str, accession_number: str)`**: Get detailed information from a specific Form 4.
 *   **`analyze_form4_transactions(identifier: str, days: int = 90, limit: int = 50)`**: Analyze Form 4 filings and extract detailed transaction data.
 *   **`analyze_insider_sentiment(identifier: str, months: int = 6)`**: Analyze insider trading sentiment - simplified version.
+
+### SearchTools
+
+Keyword search across multiple SEC filings using edgartools' text search.
+
+• `search_filings_text(keyword: str, identifier: Optional[str] = None, forms: Optional[List[str]] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, page: int = 1, page_size: int = 25, order: str = "asc")`
+
+- Purpose: Search filings for a keyword/phrase, filter by company, form type, and date range, return paginated, chronologically ordered results.
+- Notes: Requires edgartools with TextSearch support. If unavailable, the tool returns a clear error message.
+- Returns: `{ success, results, page, page_size, total, total_pages, order }` where each result includes `accession_number`, `filing_date`, `form_type`, `company_name`, `cik`, `url`, and a `snippet`.

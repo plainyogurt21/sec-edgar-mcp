@@ -125,7 +125,7 @@ class FilingsTools:
             return {"success": False, "error": f"Failed to get filing content: {str(e)}"}
 
     def analyze_8k(self, identifier: str, accession_number: str) -> ToolResponse:
-        """Analyze an 8-K filing for specific events and extract full content."""
+        """Analyze an 8-K filing and extract full content."""
         try:
             company = self.client.get_company(identifier)
 
@@ -161,30 +161,108 @@ class FilingsTools:
                 "content_truncated": len(main_text) > 10000
             })
 
-            # Add each exhibit as its own section
-            if hasattr(filing, "exhibits"):
-                try:
-                    for idx, exhibit in enumerate(list(filing.exhibits)):
-                        exhibit_content = ""
-                        if hasattr(exhibit, "text"):
+            # Add each exhibit/attachment as its own section using attachments API if available
+            try:
+                attachments_candidates = []
+
+                # Prefer the attachments API from edgartools, with graceful fallbacks
+                attachments_obj = getattr(filing, "attachments", None)
+                if attachments_obj is not None:
+                    # Some versions expose an iterable; others expose .exhibits as a filtered view
+                    if hasattr(attachments_obj, "exhibits"):
+                        try:
+                            attachments_candidates = list(attachments_obj.exhibits)
+                        except Exception:
+                            # Fall back to iterating the container directly
                             try:
-                                exhibit_content = exhibit.text()
+                                attachments_candidates = list(attachments_obj)
                             except Exception:
-                                exhibit_content = "[Unable to extract content]"
-                        label = getattr(exhibit, "description", f"Exhibit {idx+1}")
-                        sections.append({
-                            "type": "exhibit",
-                            "label": label,
-                            "content": exhibit_content[:100000] if len(exhibit_content) > 100000 else exhibit_content,
-                            "content_truncated": len(exhibit_content) > 100000
-                        })
-                except Exception as e:
-                    sections.append({
+                                attachments_candidates = []
+                    else:
+                        try:
+                            attachments_candidates = list(attachments_obj)
+                        except Exception:
+                            attachments_candidates = []
+
+                # Legacy fallback to filing.exhibits if present
+                if not attachments_candidates and hasattr(filing, "exhibits"):
+                    try:
+                        attachments_candidates = list(filing.exhibits)
+                    except Exception:
+                        attachments_candidates = []
+
+                # Iterate and extract text from each candidate
+                for idx, exhibit in enumerate(attachments_candidates):
+                    label = (
+                        getattr(exhibit, "description", None)
+                        or getattr(exhibit, "document_type", None)
+                        or getattr(exhibit, "type", None)
+                        or getattr(exhibit, "filename", None)
+                        or getattr(exhibit, "file", None)
+                        or f"Exhibit {idx+1}"
+                    )
+
+                    # Extract text content with multiple fallbacks per attachments API
+                    exhibit_content = ""
+                    try:
+                        # Primary: .text method or property
+                        text_attr = getattr(exhibit, "text", None)
+                        if callable(text_attr):
+                            exhibit_content = text_attr() or ""
+                        elif isinstance(text_attr, str):
+                            exhibit_content = text_attr
+                        else:
+                            # Some implementations provide .to_text()
+                            to_text = getattr(exhibit, "to_text", None)
+                            if callable(to_text):
+                                exhibit_content = to_text() or ""
+                            else:
+                                # Fallback: content/content_bytes
+                                content_attr = getattr(exhibit, "content", None)
+                                if isinstance(content_attr, (bytes, bytearray)):
+                                    try:
+                                        exhibit_content = content_attr.decode("utf-8", errors="ignore")
+                                    except Exception:
+                                        exhibit_content = ""
+                                elif isinstance(content_attr, str):
+                                    exhibit_content = content_attr
+                                else:
+                                    # Last resort: if .html() exists, strip to text
+                                    html_fn = getattr(exhibit, "html", None)
+                                    if callable(html_fn):
+                                        try:
+                                            html = html_fn()
+                                            if isinstance(html, str):
+                                                # Minimal stripping of tags if BeautifulSoup not guaranteed
+                                                import re as _re
+                                                exhibit_content = _re.sub(r"<[^>]+>", " ", html)
+                                                exhibit_content = _re.sub(r"\s+", " ", exhibit_content).strip()
+                                        except Exception:
+                                            exhibit_content = ""
+                    except Exception:
+                        exhibit_content = "[Unable to extract exhibit content]"
+
+                    # Build section entry
+                    section_entry = {
                         "type": "exhibit",
-                        "label": "Exhibits Error",
-                        "content": f"Error extracting exhibits: {str(e)}",
-                        "content_truncated": False
-                    })
+                        "label": label,
+                        "content": exhibit_content[:100000] if len(exhibit_content) > 100000 else exhibit_content,
+                        "content_truncated": len(exhibit_content) > 100000,
+                    }
+
+                    # Include URL if available for verification
+                    url_val = getattr(exhibit, "url", None)
+                    if isinstance(url_val, str):
+                        section_entry["url"] = url_val
+
+                    sections.append(section_entry)
+            except Exception as e:
+                sections.append({
+                    "type": "exhibit",
+                    "label": "Exhibits Error",
+                    "content": f"Error extracting exhibits: {str(e)}",
+                    "content_truncated": False,
+                })
 
             analysis: Dict[str, Any] = {
                 "filing_info": {

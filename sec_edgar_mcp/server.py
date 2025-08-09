@@ -1,6 +1,6 @@
 import argparse
 from mcp.server.fastmcp import FastMCP
-from sec_edgar_mcp.tools import CompanyTools, FilingsTools, FinancialTools, InsiderTools
+from sec_edgar_mcp.tools import CompanyTools, FilingsTools, FinancialTools, SearchTools
 
 
 # Initialize MCP server
@@ -41,7 +41,7 @@ YOU ARE A FILING DATA EXTRACTION SERVICE, NOT A FINANCIAL ANALYST OR ADVISOR.
 company_tools = CompanyTools()
 filings_tools = FilingsTools()
 financial_tools = FinancialTools()
-insider_tools = InsiderTools()
+search_tools = SearchTools()
 
 
 # Company Tools
@@ -170,6 +170,46 @@ def get_filing_sections(identifier: str, accession_number: str, form_type: str):
         Dictionary containing available sections from the filing
     """
     return filings_tools.get_filing_sections(identifier, accession_number, form_type)
+
+
+# Search Tools
+@mcp.tool("search_filings_text")
+def search_filings_text(
+    keyword: str,
+    identifier: str | None = None,
+    forms: list | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    page: int = 1,
+    page_size: int = 25,
+    order: str = "asc",
+):
+    """
+    Search across SEC filings for a keyword/phrase with pagination and chronological ordering.
+
+    Args:
+        keyword: Search keyword or phrase.
+        identifier: Optional company ticker or CIK to filter results.
+        forms: Optional list of SEC form types to include (e.g., ["10-K", "8-K"]).
+        start_date: Optional start date (YYYY-MM-DD or YYYYMMDD).
+        end_date: Optional end date (YYYY-MM-DD or YYYYMMDD).
+        page: 1-based page number (default: 1).
+        page_size: Results per page (default: 25, max: 100).
+        order: "asc" for chronological (default) or "desc".
+
+    Returns:
+        Dictionary of search results including total, total_pages, and current page items.
+    """
+    return search_tools.search_filings_text(
+        keyword=keyword,
+        identifier=identifier,
+        forms=forms,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        page_size=page_size,
+        order=order,
+    )
 
 
 # Financial Tools
@@ -313,112 +353,10 @@ def discover_xbrl_concepts(
     return financial_tools.discover_xbrl_concepts(identifier, accession_number, form_type, namespace_filter)
 
 
-# Insider Trading Tools
-@mcp.tool("get_insider_transactions")
-def get_insider_transactions(identifier: str, form_types: list = None, days: int = 90, limit: int = 50):
-    """
-    Get insider trading transactions for a company from SEC filings.
-
-    CRITICAL INSTRUCTIONS FOR LLM RESPONSES:
-    - ONLY use data from the returned SEC insider filings. NEVER add external information.
-    - ALWAYS include the filing reference information with clickable SEC URLs in your response.
-    - NEVER estimate or calculate values not explicitly present in the filings.
-    - PRESERVE EXACT DATES AND VALUES - NO ROUNDING! Show exact values from filings.
-    - ALWAYS specify the exact filing date and accession number for each transaction.
-    - Be completely deterministic - same query should always give same response.
-    - If data is not in the filing, say "Not available in this filing" - DO NOT guess.
-
-    Args:
-        identifier: Company ticker symbol or CIK number
-        form_types: List of form types to include (default: ["3", "4", "5"])
-        days: Number of days to look back (default: 90)
-        limit: Maximum number of transactions to return (default: 50)
-
-    Returns:
-        Dictionary containing insider transactions with direct SEC URLs for verification
-    """
-    return insider_tools.get_insider_transactions(identifier, form_types, days, limit)
 
 
-@mcp.tool("get_insider_summary")
-def get_insider_summary(identifier: str, days: int = 180):
-    """
-    Get a summary of insider trading activity for a company from SEC filings.
-
-    CRITICAL INSTRUCTIONS FOR LLM RESPONSES:
-    - ONLY use data from the returned SEC insider filings. NEVER add external information.
-    - ALWAYS include the filing reference information with SEC URLs in your response.
-    - PRESERVE EXACT COUNTS AND DATES - NO ROUNDING OR ESTIMATES!
-    - Be completely deterministic - same query should always give same response.
-    - If data is not in the filing, say "Not available in filings" - DO NOT guess.
-
-    Args:
-        identifier: Company ticker symbol or CIK number
-        days: Number of days to analyze (default: 180)
-
-    Returns:
-        Dictionary containing insider trading summary from SEC filings
-    """
-    return insider_tools.get_insider_summary(identifier, days)
 
 
-@mcp.tool("get_form4_details")
-def get_form4_details(identifier: str, accession_number: str):
-    """
-    Get detailed information from a specific Form 4 filing.
-
-    Args:
-        identifier: Company ticker symbol or CIK number
-        accession_number: The accession number of the Form 4
-
-    Returns:
-        Dictionary containing detailed Form 4 information
-    """
-    return insider_tools.get_form4_details(identifier, accession_number)
-
-
-@mcp.tool("analyze_form4_transactions")
-def analyze_form4_transactions(identifier: str, days: int = 90, limit: int = 50):
-    """
-    Analyze Form 4 filings and extract detailed transaction data including insider names,
-    transaction amounts, share counts, prices, and ownership details.
-
-    USE THIS TOOL when users ask for detailed insider transaction analysis, transaction tables,
-    or specific transaction amounts from Form 4 filings.
-
-    CRITICAL INSTRUCTIONS FOR LLM RESPONSES:
-    - ONLY use data from the returned SEC Form 4 filings. NEVER add external information.
-    - ALWAYS include the filing reference information with clickable SEC URLs.
-    - PRESERVE EXACT NUMERIC VALUES - NO ROUNDING! Show exact share counts and prices.
-    - ALWAYS specify the exact filing date and accession number for each transaction.
-    - Present data in table format when requested by users.
-    - Be completely deterministic - same query should always give same response.
-    - If data is not in the filing, say "Not available in this filing" - DO NOT guess.
-
-    Args:
-        identifier: Company ticker symbol or CIK number
-        days: Number of days to look back (default: 90)
-        limit: Maximum number of filings to analyze (default: 50)
-
-    Returns:
-        Dictionary containing detailed Form 4 transaction analysis with exact values from SEC filings
-    """
-    return insider_tools.analyze_form4_transactions(identifier, days, limit)
-
-
-@mcp.tool("analyze_insider_sentiment")
-def analyze_insider_sentiment(identifier: str, months: int = 6):
-    """
-    Analyze insider trading sentiment and trends over time.
-
-    Args:
-        identifier: Company ticker symbol or CIK number
-        months: Number of months to analyze (default: 6)
-
-    Returns:
-        Dictionary containing sentiment analysis and trends
-    """
-    return insider_tools.analyze_insider_sentiment(identifier, months)
 
 
 # Utility Tools
@@ -457,20 +395,6 @@ def get_recommended_tools(form_type: str):
             "tips": [
                 "Use analyze_8k to identify specific events reported",
                 "Check for press releases and material agreements",
-            ],
-        },
-        "4": {
-            "tools": [
-                "get_insider_transactions",
-                "analyze_form4_transactions",
-                "get_form4_details",
-                "analyze_insider_sentiment",
-            ],
-            "description": "Statement of changes in beneficial ownership",
-            "tips": [
-                "Use get_insider_transactions for recent trading activity overview",
-                "Use analyze_form4_transactions for detailed transaction analysis and tables",
-                "Use analyze_insider_sentiment to understand trading patterns",
             ],
         },
         "DEF 14A": {

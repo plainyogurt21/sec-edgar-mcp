@@ -114,12 +114,14 @@ class FilingsTools:
         except Exception as e:
             return {"success": False, "error": f"Failed to get filing content: {str(e)}"}
 
-    def analyze_8k(self, identifier: str, accession_number: str) -> ToolResponse:
+    def analyze_8k(
+        self, identifier: str, accession_number: str
+    ) -> Dict[str, Union[bool, str, Dict[str, Any]]]:
         """Analyze an 8-K filing for specific events."""
         try:
+            print(f"Analyzing 8-K for {identifier}, accession: {accession_number}")
             company = self.client.get_company(identifier)
 
-            # Find the specific filing
             filing = None
             for f in company.get_filings(form="8-K"):
                 if f.accession_number.replace("-", "") == accession_number.replace("-", ""):
@@ -129,8 +131,8 @@ class FilingsTools:
             if not filing:
                 raise FilingNotFoundError(f"8-K filing {accession_number} not found")
 
-            # Get the 8-K object
             eightk = filing.obj()
+            print(f"Successfully parsed 8-K object: {type(eightk)}")
 
             raw_date = getattr(eightk, "date_of_report", None)
             formatted_date = None
@@ -138,9 +140,11 @@ class FilingsTools:
                 formatted_date = raw_date.isoformat()
             elif isinstance(raw_date, str):
                 try:
-                    formatted_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).isoformat()
+                    formatted_date = datetime.fromisoformat(
+                        raw_date.replace("Z", "+00:00")
+                    ).isoformat()
                 except ValueError:
-                    formatted_date = raw_date  # Return original string if parsing fails
+                    formatted_date = raw_date
 
             analysis: Dict[str, Any] = {
                 "date_of_report": formatted_date,
@@ -148,7 +152,6 @@ class FilingsTools:
                 "events": {},
             }
 
-            # Check for common 8-K items
             item_descriptions = {
                 "1.01": "Entry into Material Agreement",
                 "1.02": "Termination of Material Agreement",
@@ -166,17 +169,30 @@ class FilingsTools:
 
             for item_code, description in item_descriptions.items():
                 if hasattr(eightk, "has_item") and eightk.has_item(item_code):
-                    analysis["events"][item_code] = {"present": True, "description": description}
+                    analysis["events"][item_code] = {
+                        "present": True,
+                        "description": description,
+                    }
 
-            # Check for press releases
             if hasattr(eightk, "has_press_release"):
                 analysis["has_press_release"] = eightk.has_press_release
                 if eightk.has_press_release and hasattr(eightk, "press_releases"):
-                    analysis["press_releases"] = [pr.title for pr in eightk.press_releases[:3]]
+                    press_releases = eightk.press_releases
+                    print(f"Press releases object type: {type(press_releases)}")
+                    if not isinstance(press_releases, list):
+                        press_releases = [press_releases]
+                    analysis["press_releases"] = [
+                        pr.title for pr in press_releases[:3]
+                    ]
 
+            print(f"Analysis complete: {analysis}")
             return {"success": True, "analysis": analysis}
+        except FilingNotFoundError as e:
+            print(f"Filing not found error: {e}")
+            return {"success": False, "error": str(e)}
         except Exception as e:
-            return {"success": False, "error": f"Failed to analyze 8-K: {str(e)}"}
+            print(f"An unexpected error occurred in analyze_8k: {e}")
+            return {"success": False, "error": f"Failed to analyze 8-K: {e}"}
 
     def get_filing_sections(self, identifier: str, accession_number: str, form_type: str) -> ToolResponse:
         """Get specific sections from a filing."""

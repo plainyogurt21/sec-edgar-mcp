@@ -120,7 +120,6 @@ class FilingsTools:
     def analyze_8k(self, identifier: str, accession_number: str) -> ToolResponse:
         """Analyze an 8-K filing for specific events and extract full content."""
         try:
-            return ""
             company = self.client.get_company(identifier)
 
             # Find the specific filing
@@ -135,9 +134,50 @@ class FilingsTools:
 
             # Get the 8-K object
             eightk = filing.obj()
-            return eightk
+
+            # Handle date formatting safely
+            date_of_report = None
+            if hasattr(eightk, "date_of_report"):
+                raw_date = eightk.date_of_report
+                if hasattr(raw_date, 'isoformat'):
+                    date_of_report = raw_date.isoformat()
+                else:
+                    date_of_report = str(raw_date) if raw_date else None
+
+            main_text = filing.text()
+            sections = []
+            # Main 8-K filing content as first section
+            sections.append({
+                "type": "8-K",
+                "label": "Main Filing",
+                "content": main_text[:10000] if len(main_text) > 10000 else main_text,
+                "content_truncated": len(main_text) > 10000
+            })
+
             # Add each exhibit as its own section
- 
+            if hasattr(filing, "exhibits"):
+                try:
+                    for idx, exhibit in enumerate(list(filing.exhibits)):
+                        exhibit_content = ""
+                        if hasattr(exhibit, "text"):
+                            try:
+                                exhibit_content = exhibit.text()
+                            except Exception:
+                                exhibit_content = "[Unable to extract content]"
+                        label = getattr(exhibit, "description", f"Exhibit {idx+1}")
+                        sections.append({
+                            "type": "exhibit",
+                            "label": label,
+                            "content": exhibit_content[:100000] if len(exhibit_content) > 100000 else exhibit_content,
+                            "content_truncated": len(exhibit_content) > 100000
+                        })
+                except Exception as e:
+                    sections.append({
+                        "type": "exhibit",
+                        "label": "Exhibits Error",
+                        "content": f"Error extracting exhibits: {str(e)}",
+                        "content_truncated": False
+                    })
 
             analysis: Dict[str, Any] = {
                 "filing_info": {

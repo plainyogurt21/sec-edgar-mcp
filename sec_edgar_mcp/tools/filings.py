@@ -19,30 +19,37 @@ class FilingsTools:
         form_type: Optional[Union[str, List[str]]] = None,
         days: int = 30,
         limit: int = 50,
+        year: Optional[Union[int, List[int]]] = None,
+        quarter: Optional[Union[int, List[int]]] = None,
     ) -> ToolResponse:
-        """Get recent filings for a company or across all companies."""
+        """Get recent filings for a company or across all companies, with optional date, year, and quarter filtering."""
         try:
+            filings = None
             if identifier:
-                # Company-specific filings
                 company = self.client.get_company(identifier)
-                if form_type is not None:
-                    filings = company.get_filings(form=form_type)
-                else:
-                    filings = company.get_filings()
+                filings = company.get_filings(
+                    form=form_type,
+                    year=year,
+                    quarter=quarter,
+                )
             else:
-                # Global filings using edgartools get_filings()
-                filings = get_filings(form=form_type)
+                filings = get_filings(form=form_type, year=year, quarter=quarter)
 
-            # Limit results
-            filings_list = []
-            for i, filing in enumerate(filings):
-                if i >= limit:
-                    break
-
-                # Convert date fields to datetime objects if they're strings
+            # Filter by days
+            now = datetime.utcnow()
+            filtered_filings = []
+            for filing in filings:
                 filing_date = filing.filing_date
                 if isinstance(filing_date, str):
                     filing_date = datetime.fromisoformat(filing_date.replace("Z", "+00:00"))
+                if (now - filing_date).days <= days:
+                    filtered_filings.append(filing)
+
+            # Limit results
+            filings_list = []
+            for i, filing in enumerate(filtered_filings):
+                if i >= limit:
+                    break
 
                 acceptance_datetime = getattr(filing, "acceptance_datetime", None)
                 if isinstance(acceptance_datetime, str):
@@ -54,7 +61,7 @@ class FilingsTools:
 
                 filing_info = FilingInfo(
                     accession_number=filing.accession_number,
-                    filing_date=filing_date,
+                    filing_date=filing.filing_date,
                     form_type=filing.form,
                     company_name=filing.company,
                     cik=str(filing.cik),

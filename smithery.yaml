@@ -14,8 +14,8 @@ startCommand:
   commandFunction: |-
     (config) => ({
       command: 'python',
-      args: ['-m', 'sec_edgar_mcp.server'],
-      env: config.userAgent ? { 'EDGAR_USER_AGENT': config.userAgent } : {}
+      args: ['sec_edgar_mcp/server.py'],
+      env: config.userAgent ? { 'SEC_EDGAR_USER_AGENT': config.userAgent } : {}
     })
 
 exampleConfig:

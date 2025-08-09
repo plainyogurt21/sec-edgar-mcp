@@ -117,64 +117,50 @@ class FilingsTools:
         except Exception as e:
             return {"success": False, "error": f"Failed to get filing content: {str(e)}"}
 
-    def analyze_8k(
-        self, identifier: str, accession_number: str
-    ) -> Dict[str, Union[bool, str, Dict[str, Any]]]:
-        """Analyze an 8-K filing for specific events."""
+    def analyze_8k(self, identifier: str, accession_number: str) -> ToolResponse:
+        """Analyze an 8-K filing for specific events and extract full content."""
         try:
-            # Get company and find specific filing
             company = self.client.get_company(identifier)
-            
-            # Normalize accession number for comparison
-            target_accession = accession_number.replace("-", "")
-            
-            # Find the specific 8-K filing
+
+            # Find the specific filing
             filing = None
-            filings = company.get_filings(form="8-K")
-            
-            # Limit search to reasonable number to avoid timeout
-            count = 0
-            for f in filings:
-                if count >= 100:  # Limit search to prevent timeout
-                    break
-                if f.accession_number.replace("-", "") == target_accession:
+            for f in company.get_filings(form="8-K"):
+                if f.accession_number.replace("-", "") == accession_number.replace("-", ""):
                     filing = f
                     break
-                count += 1
 
             if not filing:
                 raise FilingNotFoundError(f"8-K filing {accession_number} not found")
 
-            # Parse the 8-K filing with timeout protection
-            try:
-                eightk = filing.obj()
-            except Exception as e:
-                return {"success": False, "error": f"Failed to parse filing: {str(e)}"}
+            # Get the 8-K object
+            eightk = filing.obj()
 
-            # Format date of report
-            raw_date = getattr(eightk, "date_of_report", None)
-            formatted_date = None
-            if isinstance(raw_date, datetime):
-                formatted_date = raw_date.isoformat()
-            elif isinstance(raw_date, str):
-                try:
-                    formatted_date = datetime.fromisoformat(
-                        raw_date.replace("Z", "+00:00")
-                    ).isoformat()
-                except ValueError:
-                    formatted_date = raw_date
+            # Handle date formatting safely
+            date_of_report = None
+            if hasattr(eightk, "date_of_report"):
+                raw_date = eightk.date_of_report
+                if hasattr(raw_date, 'isoformat'):
+                    date_of_report = raw_date.isoformat()
+                else:
+                    date_of_report = str(raw_date) if raw_date else None
 
-            # Build analysis structure
             analysis: Dict[str, Any] = {
-                "date_of_report": formatted_date,
+                "filing_info": {
+                    "accession_number": filing.accession_number,
+                    "filing_date": filing.filing_date.isoformat() if hasattr(filing.filing_date, 'isoformat') else str(filing.filing_date),
+                    "company": filing.company,
+                    "cik": filing.cik,
+                    "url": getattr(filing, "url", None)
+                },
+                "date_of_report": date_of_report,
                 "items": getattr(eightk, "items", []),
                 "events": {},
-                "accession_number": filing.accession_number,
-                "filing_date": filing.filing_date.isoformat() if hasattr(filing.filing_date, 'isoformat') else str(filing.filing_date),
-                "url": getattr(filing, "url", None)
+                "full_text": filing.text(),
+                "exhibits": [],
+                "attachments": []
             }
 
-            # Map of 8-K item codes to descriptions
+            # Check for common 8-K items
             item_descriptions = {
                 "1.01": "Entry into Material Agreement",
                 "1.02": "Termination of Material Agreement",
@@ -190,47 +176,111 @@ class FilingsTools:
                 "8.01": "Other Events",
             }
 
-            # Check for specific items
             for item_code, description in item_descriptions.items():
                 if hasattr(eightk, "has_item") and eightk.has_item(item_code):
-                    analysis["events"][item_code] = {
-                        "present": True,
-                        "description": description,
-                    }
+                    analysis["events"][item_code] = {"present": True, "description": description}
 
-            # Check for press releases
+            # Extract exhibits
+            if hasattr(filing, "exhibits"):
+                try:
+                    for exhibit in list(filing.exhibits):
+                        exhibit_info = {
+                            "description": getattr(exhibit, 'description', str(exhibit)),
+                            "document": getattr(exhibit, 'document', None),
+                            "content": None
+                        }
+                        
+                        # Try to get exhibit content
+                        try:
+                            if hasattr(exhibit, 'text'):
+                                exhibit_content = exhibit.text()
+                                # Limit content size for reasonable response
+                                if len(exhibit_content) > 50000:
+                                    exhibit_info["content"] = exhibit_content[:50000] + "\n\n... [truncated - content too long]"
+                                    exhibit_info["content_truncated"] = True
+                                    exhibit_info["original_length"] = len(exhibit_content)
+                                else:
+                                    exhibit_info["content"] = exhibit_content
+                                    exhibit_info["content_truncated"] = False
+                        except Exception:
+                            exhibit_info["content"] = "[Unable to extract content]"
+                        
+                        analysis["exhibits"].append(exhibit_info)
+                except Exception as e:
+                    analysis["exhibits_error"] = f"Error extracting exhibits: {str(e)}"
+
+            # Extract all attachments
+            if hasattr(filing, "attachments"):
+                try:
+                    for attachment in list(filing.attachments):
+                        attachment_info = {
+                            "description": getattr(attachment, 'description', str(attachment)),
+                            "document": getattr(attachment, 'document', None),
+                            "content": None
+                        }
+                        
+                        # Try to get attachment content
+                        try:
+                            if hasattr(attachment, 'text'):
+                                attachment_content = attachment.text()
+                                # Limit content size for reasonable response
+                                if len(attachment_content) > 30000:
+                                    attachment_info["content"] = attachment_content[:30000] + "\n\n... [truncated - content too long]"
+                                    attachment_info["content_truncated"] = True
+                                    attachment_info["original_length"] = len(attachment_content)
+                                else:
+                                    attachment_info["content"] = attachment_content
+                                    attachment_info["content_truncated"] = False
+                        except Exception:
+                            attachment_info["content"] = "[Unable to extract content]"
+                        
+                        analysis["attachments"].append(attachment_info)
+                except Exception as e:
+                    analysis["attachments_error"] = f"Error extracting attachments: {str(e)}"
+
+            # Check for press releases with enhanced content
             if hasattr(eightk, "has_press_release"):
                 analysis["has_press_release"] = eightk.has_press_release
+                analysis["press_releases"] = []
+                
                 if eightk.has_press_release and hasattr(eightk, "press_releases"):
                     press_releases = eightk.press_releases
-                    if hasattr(press_releases, 'attachments') and press_releases.attachments:
-                        analysis["press_releases"] = []
-                        for att in press_releases.attachments:
-                            # Limit press release content to prevent response size issues
-                            content = att.text()
-                            if len(content) > 10000:
-                                content = content[:10000] + "... [truncated]"
-                            analysis["press_releases"].append({
-                                "description": att.description, 
-                                "content": content
-                            })
+                    
+                    if hasattr(press_releases, 'attachments'):
+                        try:
+                            for pr_attachment in list(press_releases.attachments):
+                                pr_info = {
+                                    "description": getattr(pr_attachment, 'description', str(pr_attachment)),
+                                    "content": None
+                                }
+                                
+                                try:
+                                    pr_content = pr_attachment.text()
+                                    # Limit press release content size
+                                    if len(pr_content) > 40000:
+                                        pr_info["content"] = pr_content[:40000] + "\n\n... [truncated - content too long]"
+                                        pr_info["content_truncated"] = True
+                                        pr_info["original_length"] = len(pr_content)
+                                    else:
+                                        pr_info["content"] = pr_content
+                                        pr_info["content_truncated"] = False
+                                except Exception:
+                                    pr_info["content"] = "[Unable to extract press release content]"
+                                
+                                analysis["press_releases"].append(pr_info)
+                        except Exception as e:
+                            analysis["press_releases"] = [{"error": f"Error extracting press releases: {str(e)}"}]
 
-            # Extract item details
-            if hasattr(eightk, "items") and eightk.items:
-                analysis["item_details"] = {}
-                for item_name in eightk.items:
-                    item_attr = f"item_{item_name.lower().replace('.', '_')}"
-                    if hasattr(eightk, item_attr):
-                        item_text = getattr(eightk, item_attr).text
-                        # Limit item text to prevent response size issues
-                        if len(item_text) > 5000:
-                            item_text = item_text[:5000] + "... [truncated]"
-                        analysis["item_details"][item_name] = item_text
+            # Add summary statistics
+            analysis["summary"] = {
+                "total_exhibits": len(analysis["exhibits"]),
+                "total_attachments": len(analysis["attachments"]),
+                "total_press_releases": len(analysis["press_releases"]),
+                "full_text_length": len(analysis["full_text"]),
+                "has_events": len(analysis["events"]) > 0
+            }
 
             return {"success": True, "analysis": analysis}
-            
-        except FilingNotFoundError as e:
-            return {"success": False, "error": str(e)}
         except Exception as e:
             return {"success": False, "error": f"Failed to analyze 8-K: {str(e)}"}
 

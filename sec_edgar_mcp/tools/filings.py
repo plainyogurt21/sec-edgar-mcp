@@ -156,8 +156,7 @@ class FilingsTools:
                 "items": getattr(eightk, "items", []),
                 "events": {},
                 "full_text": filing.text(),
-                "exhibits": [],
-                "attachments": []
+                "exhibits": []
             }
 
             # Check for common 8-K items
@@ -180,7 +179,7 @@ class FilingsTools:
                 if hasattr(eightk, "has_item") and eightk.has_item(item_code):
                     analysis["events"][item_code] = {"present": True, "description": description}
 
-            # Extract exhibits
+            # Extract exhibits text only
             if hasattr(filing, "exhibits"):
                 try:
                     for exhibit in list(filing.exhibits):
@@ -190,7 +189,7 @@ class FilingsTools:
                             "content": None
                         }
                         
-                        # Try to get exhibit content
+                        # Try to get exhibit text content
                         try:
                             if hasattr(exhibit, 'text'):
                                 exhibit_content = exhibit.text()
@@ -208,35 +207,6 @@ class FilingsTools:
                         analysis["exhibits"].append(exhibit_info)
                 except Exception as e:
                     analysis["exhibits_error"] = f"Error extracting exhibits: {str(e)}"
-
-            # Extract all attachments
-            if hasattr(filing, "attachments"):
-                try:
-                    for attachment in list(filing.attachments):
-                        attachment_info = {
-                            "description": getattr(attachment, 'description', str(attachment)),
-                            "document": getattr(attachment, 'document', None),
-                            "content": None
-                        }
-                        
-                        # Try to get attachment content
-                        try:
-                            if hasattr(attachment, 'text'):
-                                attachment_content = attachment.text()
-                                # Limit content size for reasonable response
-                                if len(attachment_content) > 30000:
-                                    attachment_info["content"] = attachment_content[:30000] + "\n\n... [truncated - content too long]"
-                                    attachment_info["content_truncated"] = True
-                                    attachment_info["original_length"] = len(attachment_content)
-                                else:
-                                    attachment_info["content"] = attachment_content
-                                    attachment_info["content_truncated"] = False
-                        except Exception:
-                            attachment_info["content"] = "[Unable to extract content]"
-                        
-                        analysis["attachments"].append(attachment_info)
-                except Exception as e:
-                    analysis["attachments_error"] = f"Error extracting attachments: {str(e)}"
 
             # Check for press releases with enhanced content
             if hasattr(eightk, "has_press_release"):
@@ -274,7 +244,6 @@ class FilingsTools:
             # Add summary statistics
             analysis["summary"] = {
                 "total_exhibits": len(analysis["exhibits"]),
-                "total_attachments": len(analysis["attachments"]),
                 "total_press_releases": len(analysis["press_releases"]),
                 "full_text_length": len(analysis["full_text"]),
                 "has_events": len(analysis["events"]) > 0

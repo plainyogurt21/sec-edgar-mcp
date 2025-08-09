@@ -2,135 +2,46 @@
 
 This document provides an overview of the available tools in the SEC EDGAR MCP.
 
-## Filings Tools
+## Tools
 
-These tools are used for filing-related operations.
+This project provides a set of tools to interact with SEC EDGAR data. These tools are designed to simplify common tasks related to company information, financial filings, and insider trading data.
 
-### `get_recent_filings(identifier: str = None, form_type: str = None, days: int = 30, limit: int = 50)`
+### CompanyTools
 
-Get recent SEC filings for a company or across all companies.
+Tools for company-related operations.
 
-**Inputs:**
+*   **`get_cik_by_ticker(ticker: str)`**: Get the CIK for a company based on its ticker symbol.
+*   **`get_company_info(identifier: str)`**: Get detailed company information.
+*   **`search_companies(query: str, limit: int = 10)`**: Search for companies by name.
+*   **`get_company_facts(identifier: str)`**: Get company facts and financial data.
 
-- `identifier` (str, optional): Company ticker/CIK (if not provided, returns all recent filings).
-- `form_type` (str, optional): Specific form type to filter (e.g., "10-K", "10-Q", "8-K").
-- `days` (int, optional): Number of days to look back (default: 30).
-- `limit` (int, optional): Maximum number of filings to return (default: 50).
+### FilingsTools
 
-**Output:**
+Tools for filing-related operations.
 
-A dictionary containing a list of recent filings.
+*   **`get_recent_filings(identifier: Optional[str] = None, form_type: Optional[Union[str, List[str]]] = None, days: int = 30, limit: int = 50)`**: Get recent filings for a company or across all companies.
+*   **`get_filing_content(identifier: str, accession_number: str, form_type: Optional[str] = None)`**: Get the content of a specific filing.
+*   **`analyze_8k(identifier: str, accession_number: str)`**: Analyze an 8-K filing for specific events.
+*   **`get_filing_sections(identifier: str, accession_number: str, form_type: str)`**: Get specific sections from a filing.
 
-**Example:**
+### FinancialTools
 
-```json
-{
-  "success": true,
-  "filings": [
-    {
-      "accession_number": "0000320193-24-000080",
-      "filing_date": "2024-08-01T00:00:00",
-      "form_type": "8-K",
-      "company_name": "Apple Inc.",
-      "cik": 320193,
-      "file_number": "001-36743",
-      "acceptance_datetime": "2024-08-01T16:05:24",
-      "period_of_report": "2024-08-01T00:00:00"
-    }
-  ],
-  "count": 1
-}
-```
+Tools for financial data and XBRL operations.
 
-### `get_filing_content(identifier: str, accession_number: str)`
+*   **`get_financials(identifier: str, statement_type: str = "all")`**: Get financial statements for a company by parsing XBRL data from filings.
+*   **`get_segment_data(identifier: str, segment_type: str = "geographic")`**: Get segment revenue breakdown.
+*   **`get_key_metrics(identifier: str, metrics: Optional[List[str]] = None)`**: Get key financial metrics.
+*   **`compare_periods(identifier: str, metric: str, start_year: int, end_year: int)`**: Compare a financial metric across periods.
+*   **`discover_company_metrics(identifier: str, search_term: Optional[str] = None)`**: Discover available metrics for a company.
+*   **`get_xbrl_concepts(identifier: str, accession_number: Optional[str] = None, concepts: Optional[List[str]] = None, form_type: str = "10-K")`**: Extract specific XBRL concepts from a filing.
+*   **`discover_xbrl_concepts(identifier: str, accession_number: Optional[str] = None, form_type: str = "10-K", namespace_filter: Optional[str] = None)`**: Discover all available XBRL concepts in a filing, including company-specific ones.
 
-Get the content of a specific SEC filing.
+### InsiderTools
 
-**Inputs:**
+Tools for insider trading data (Forms 3, 4, 5) - simplified version.
 
-- `identifier` (str): Company ticker symbol or CIK number.
-- `accession_number` (str): The accession number of the filing.
-
-**Output:**
-
-A dictionary containing filing content and metadata.
-
-**Example:**
-
-```json
-{
-  "success": true,
-  "accession_number": "0000320193-24-000080",
-  "form_type": "8-K",
-  "filing_date": "2024-08-01T00:00:00",
-  "content": "...",
-  "content_truncated": true,
-  "filing_data": {},
-  "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000080/a8-kex991q3202406292024.htm"
-}
-```
-
-### `analyze_8k(identifier: str, accession_number: str)`
-
-Analyze an 8-K filing for specific events and items.
-
-**Inputs:**
-
-- `identifier` (str): Company ticker symbol or CIK number.
-- `accession_number` (str): The accession number of the 8-K filing.
-
-**Output:**
-
-A dictionary containing analysis of 8-K items and events, including the content of press releases and items.
-
-**Example:**
-
-```json
-{
-  "success": true,
-  "analysis": {
-    "date_of_report": "2024-08-01T00:00:00",
-    "items": [
-      "Item 2.02",
-      "Item 9.01"
-    ],
-    "events": {},
-    "has_press_release": true,
-    "press_releases": [
-      {
-        "description": "EX-99.1",
-        "content": "..."
-      }
-    ],
-    "item_details": {
-      "Item 2.02": "...",
-      "Item 9.01": "..."
-    }
-  }
-}
-```
-
-### `get_filing_sections(identifier: str, accession_number: str, form_type: str)`
-
-Get specific sections from a filing (e.g., business description, risk factors, MD&A).
-
-**Inputs:**
-
-- `identifier` (str): Company ticker symbol or CIK number.
-- `accession_number` (str): The accession number of the filing.
-- `form_type` (str): The type of form (e.g., "10-K", "10-Q").
-
-**Output:**
-
-A dictionary containing available sections from the filing.
-
-**Example:**
-
-```json
-{
-  "success": true,
-  "form_type": "8-K",
-  "sections": {},
-  "available_sections": []
-}
-```
+*   **`get_insider_transactions(identifier: str, form_types: Optional[List[str]] = None, days: int = 90, limit: int = 50)`**: Get insider transactions for a company.
+*   **`get_insider_summary(identifier: str, days: int = 180)`**: Get summary of insider trading activity.
+*   **`get_form4_details(identifier: str, accession_number: str)`**: Get detailed information from a specific Form 4.
+*   **`analyze_form4_transactions(identifier: str, days: int = 90, limit: int = 50)`**: Analyze Form 4 filings and extract detailed transaction data.
+*   **`analyze_insider_sentiment(identifier: str, months: int = 6)`**: Analyze insider trading sentiment - simplified version.

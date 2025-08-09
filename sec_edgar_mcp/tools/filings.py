@@ -25,7 +25,10 @@ class FilingsTools:
             if identifier:
                 # Company-specific filings
                 company = self.client.get_company(identifier)
-                filings = company.get_filings(form=form_type)
+                if form_type is not None:
+                    filings = company.get_filings(form=form_type)
+                else:
+                    filings = company.get_filings()
             else:
                 # Global filings using edgartools get_filings()
                 filings = get_filings(form=form_type)
@@ -54,7 +57,7 @@ class FilingsTools:
                     filing_date=filing_date,
                     form_type=filing.form,
                     company_name=filing.company,
-                    cik=filing.cik,
+                    cik=str(filing.cik),
                     file_number=getattr(filing, "file_number", None),
                     acceptance_datetime=acceptance_datetime,
                     period_of_report=period_of_report,
@@ -118,21 +121,31 @@ class FilingsTools:
         self, identifier: str, accession_number: str
     ) -> Dict[str, Union[bool, str, Dict[str, Any]]]:
         """Analyze an 8-K filing for specific events."""
+        import time
         try:
-            print(f"Analyzing 8-K for {identifier}, accession: {accession_number}")
-            company = self.client.get_company(identifier)
+            start_total = time.time()
+            print(f"[DEBUG] analyze_8k: Start for {identifier}, accession: {accession_number}")
 
+            start_company = time.time()
+            company = self.client.get_company(identifier)
+            print(f"[DEBUG] analyze_8k: company.get_company() took {time.time() - start_company:.2f}s")
+
+            start_filings = time.time()
             filing = None
             for f in company.get_filings(form="8-K"):
                 if f.accession_number.replace("-", "") == accession_number.replace("-", ""):
                     filing = f
                     break
+            print(f"[DEBUG] analyze_8k: company.get_filings() loop took {time.time() - start_filings:.2f}s")
 
             if not filing:
+                print(f"[DEBUG] analyze_8k: Filing not found, total time: {time.time() - start_total:.2f}s")
                 raise FilingNotFoundError(f"8-K filing {accession_number} not found")
 
+            start_obj = time.time()
             eightk = filing.obj()
-            print(f"Successfully parsed 8-K object: {type(eightk)}")
+            print(f"[DEBUG] analyze_8k: filing.obj() took {time.time() - start_obj:.2f}s")
+            print(f"[DEBUG] analyze_8k: Successfully parsed 8-K object: {type(eightk)}")
 
             raw_date = getattr(eightk, "date_of_report", None)
             formatted_date = None

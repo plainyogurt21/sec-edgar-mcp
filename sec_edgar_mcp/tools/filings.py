@@ -28,7 +28,7 @@ class FilingsTools:
                 filings = company.get_filings(form=form_type)
             else:
                 # Global filings using edgartools get_filings()
-                filings = get_filings(form=form_type, count=limit)
+                filings = get_filings(form=form_type)
 
             # Limit results
             filings_list = []
@@ -65,14 +65,14 @@ class FilingsTools:
         except Exception as e:
             return {"success": False, "error": f"Failed to get recent filings: {str(e)}"}
 
-    def get_filing_content(self, identifier: str, accession_number: str) -> ToolResponse:
+    def get_filing_content(self, identifier: str, accession_number: str, form_type: Optional[str] = None) -> ToolResponse:
         """Get the content of a specific filing."""
         try:
             company = self.client.get_company(identifier)
 
             # Find the specific filing
             filing = None
-            for f in company.get_filings():
+            for f in company.get_filings(form=form_type):
                 if f.accession_number.replace("-", "") == accession_number.replace("-", ""):
                     filing = f
                     break
@@ -178,12 +178,17 @@ class FilingsTools:
                 analysis["has_press_release"] = eightk.has_press_release
                 if eightk.has_press_release and hasattr(eightk, "press_releases"):
                     press_releases = eightk.press_releases
-                    print(f"Press releases object type: {type(press_releases)}")
-                    if not isinstance(press_releases, list):
-                        press_releases = [press_releases]
-                    analysis["press_releases"] = [
-                        pr.title for pr in press_releases[:3]
-                    ]
+                    if hasattr(press_releases, 'attachments') and press_releases.attachments:
+                        analysis["press_releases"] = []
+                        for att in press_releases.attachments:
+                            analysis["press_releases"].append({"description": att.description, "content": att.text()})
+
+            if hasattr(eightk, "items") and eightk.items:
+                analysis["item_details"] = {}
+                for item_name in eightk.items:
+                    item_attr = f"item_{item_name.lower().replace('.', '_')}"
+                    if hasattr(eightk, item_attr):
+                        analysis["item_details"][item_name] = getattr(eightk, item_attr).text
 
             print(f"Analysis complete: {analysis}")
             return {"success": True, "analysis": analysis}

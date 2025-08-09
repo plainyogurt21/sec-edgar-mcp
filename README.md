@@ -1,96 +1,136 @@
-<div align="center">
+# SEC EDGAR MCP Tools
 
-# SEC EDGAR MCP
+This document provides an overview of the available tools in the SEC EDGAR MCP.
 
-</div>
+## Filings Tools
 
-<p align="center">
-  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" />
-  <img alt="Python: 3.9+" src="https://img.shields.io/badge/python-3.9+-brightgreen.svg" />
-  <img alt="Platform: Windows | Mac | Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20Mac%20%7C%20Linux-lightgrey.svg" />
-  <img alt="Build Status" src="https://img.shields.io/badge/build-passing-brightgreen.svg" />
-  <a href="https://pypi.org/project/sec-edgar-mcp/"><img alt="PyPI" src="https://img.shields.io/pypi/v/sec-edgar-mcp.svg" /></a>
-  <a href="https://mseep.ai/app/0132880c-5e83-410b-a1d5-d3df08ed7b5c"><img alt="Verified on MseeP" src="https://mseep.ai/badge.svg" /></a>
-</p>
+These tools are used for filing-related operations.
 
-https://github.com/user-attachments/assets/d310eb42-b3ca-467d-92f7-7d132e6274fe
+### `get_recent_filings(identifier: str = None, form_type: str = None, days: int = 30, limit: int = 50)`
 
-> [!IMPORTANT]
-> EDGAR® and SEC® are trademarks of the U.S. Securities and Exchange Commission. This open-source project is not affiliated with or approved by the U.S. Securities and Exchange Commission.
+Get recent SEC filings for a company or across all companies.
 
-## Introduction 📣
+**Inputs:**
 
-SEC EDGAR MCP is an open-source MCP server that connects AI models to the rich dataset of [SEC EDGAR filings](https://www.sec.gov/edgar). EDGAR (Electronic Data Gathering, Analysis, and Retrieval) is the U.S. SEC's primary system for companies to submit official filings. It contains millions of filings and "increases the efficiency, transparency, and fairness of the securities markets" by providing free public access to corporate financial information. This project makes that trove of public company data accessible to AI assistants (LLMs) for financial research, investment insights, and corporate transparency use cases.
+- `identifier` (str, optional): Company ticker/CIK (if not provided, returns all recent filings).
+- `form_type` (str, optional): Specific form type to filter (e.g., "10-K", "10-Q", "8-K").
+- `days` (int, optional): Number of days to look back (default: 30).
+- `limit` (int, optional): Maximum number of filings to return (default: 50).
 
-Using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) – an open standard that "enables seamless integration between LLM applications and external data sources and tools" – the SEC EDGAR MCP server exposes a comprehensive set of tools for accessing SEC filing data. Under the hood, it leverages the [EdgarTools Python library](https://github.com/dgunning/edgartools) to fetch data from official SEC sources and performs direct XBRL parsing for exact financial precision. This means an AI agent can ask questions like "What's the latest 10-K filing for Apple?" or "Show me Tesla's exact revenue from their latest 10-K" and the MCP server will retrieve the answer directly from EDGAR's official data with complete accuracy and filing references.
+**Output:**
 
-> [!TIP]
-> If you use this software, please cite it following [CITATION.cff](CITATION.cff), or the following APA entry:
+A dictionary containing a list of recent filings.
 
-`Amorelli, Stefano (2025). SEC EDGAR MCP (Model Context Protocol) Server [Computer software]. GitHub. https://github.com/stefanoamorelli/sec-edgar-mcp`
+**Example:**
 
-## Usage 🚀
+```json
+{
+  "success": true,
+  "filings": [
+    {
+      "accession_number": "0000320193-24-000080",
+      "filing_date": "2024-08-01T00:00:00",
+      "form_type": "8-K",
+      "company_name": "Apple Inc.",
+      "cik": 320193,
+      "file_number": "001-36743",
+      "acceptance_datetime": "2024-08-01T16:05:24",
+      "period_of_report": "2024-08-01T00:00:00"
+    }
+  ],
+  "count": 1
+}
+```
 
-Once the SEC EDGAR MCP server is running, you can connect to it with any MCP-compatible client (such as an AI assistant or the MCP CLI tool). The client will discover the available EDGAR tools and can invoke them to get real-time data from SEC filings. For example, an AI assistant could use this server to fetch a company's recent filings or query specific financial metrics without manual web searching.
+### `get_filing_content(identifier: str, accession_number: str)`
 
-For comprehensive guides, examples, and tool documentation, visit the [SEC EDGAR MCP Documentation](https://sec-edgar-mcp.amorelli.tech/).
+Get the content of a specific SEC filing.
 
-**Demo**: Here's a demonstration of an AI assistant using SEC EDGAR MCP to retrieve Apple's latest filings and financial facts (click to view the video):
+**Inputs:**
 
-<div align="center">
-    <a href="https://www.loom.com/share/17fcd7d891fe496f9a6b8fb85ede66bb">
-      <img style="max-width:300px;" src="https://cdn.loom.com/sessions/thumbnails/17fcd7d891fe496f9a6b8fb85ede66bb-7f8590d1d4bcc2fb-full-play.gif">
-    </a>
-    <a href="https://www.loom.com/share/17fcd7d891fe496f9a6b8fb85ede66bb">
-      <p>SEC EDGAR MCP - Demo - Watch Video</p>
-    </a>
-</div>
+- `identifier` (str): Company ticker symbol or CIK number.
+- `accession_number` (str): The accession number of the filing.
 
-In the demo above, the assistant uses SEC EDGAR MCP tools to retrieve Apple's filings and financial data, showcasing how EDGAR information is fetched and presented in real-time with exact precision and filing references. 📊
+**Output:**
 
-## Documentation 📚
+A dictionary containing filing content and metadata.
 
-For installation and setup instructions, visit the [SEC EDGAR MCP Quickstart Guide](https://sec-edgar-mcp.amorelli.tech/setup/quickstart). For complete tool documentation, usage examples, and configuration guides, visit the [SEC EDGAR MCP Documentation](https://sec-edgar-mcp.amorelli.tech/).
+**Example:**
 
-## Architecture 🏗️
+```json
+{
+  "success": true,
+  "accession_number": "0000320193-24-000080",
+  "form_type": "8-K",
+  "filing_date": "2024-08-01T00:00:00",
+  "content": "...",
+  "content_truncated": true,
+  "filing_data": {},
+  "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000080/a8-kex991q3202406292024.htm"
+}
+```
 
-The SEC EDGAR MCP server acts as a middleman between an AI (MCP client) and the SEC's EDGAR backend:
+### `analyze_8k(identifier: str, accession_number: str)`
 
-- 🔸 **MCP Client**: Could be an AI assistant (like [Claude](https://claude.ai/) or other MCP-compatible tools) or any app that speaks the MCP protocol. The client sends JSON-RPC requests to invoke tools and receives JSON results.
+Analyze an 8-K filing for specific events and items.
 
-- 🔸 **MCP Server (SEC EDGAR MCP)**: This server defines comprehensive EDGAR tools and handles incoming requests. It features:
-  - **Company Tools**: CIK lookup, company information, and company facts
-  - **Filing Tools**: Recent filings, filing content, 8-K analysis, and section extraction
-  - **Financial Tools**: Financial statements with direct XBRL parsing for exact precision
-  - **Insider Trading Tools**: Form 3/4/5 analysis with detailed transaction data
+**Inputs:**
 
-- 🔸 **EDGAR Data Sources**: The server uses the [edgartools Python library](https://github.com/dgunning/edgartools) to access:
-  - **SEC EDGAR REST API**: Official SEC endpoint for company data and filing metadata
-  - **Direct XBRL Parsing**: Extracts financial data directly from SEC filings using regex patterns for exact numeric precision
-  - **Filing Content**: Downloads and parses complete SEC filing documents (.txt format)
+- `identifier` (str): Company ticker symbol or CIK number.
+- `accession_number` (str): The accession number of the 8-K filing.
 
-**Key Features**:
-- **Deterministic Responses**: All tools include strict instructions to prevent AI hallucination and ensure responses are based only on SEC filing data
-- **Exact Precision**: Financial data maintains exact numeric precision (no rounding) as filed with the SEC
-- **Filing References**: Every response includes clickable SEC URLs for independent verification
-- **Flexible XBRL Extraction**: Uses pattern matching to find financial concepts without hardcoded mappings
+**Output:**
 
-**How it works**: The MCP client discovers available tools (company lookup, financial statements, insider transactions, etc.). When invoked, each tool fetches data from SEC sources, applies deterministic processing rules, and returns structured JSON with filing references. This ensures AI responses are accurate, verifiable, and based solely on official SEC data.
+A dictionary containing analysis of 8-K items and events, including the content of press releases and items.
 
-## References 📚
+**Example:**
 
-- **[SEC EDGAR](https://www.sec.gov/edgar)** – About EDGAR, SEC.gov (2024). EDGAR is the SEC's database for electronic company filings.
+```json
+{
+  "success": true,
+  "analysis": {
+    "date_of_report": "2024-08-01T00:00:00",
+    "items": [
+      "Item 2.02",
+      "Item 9.01"
+    ],
+    "events": {},
+    "has_press_release": true,
+    "press_releases": [
+      {
+        "description": "EX-99.1",
+        "content": "..."
+      }
+    ],
+    "item_details": {
+      "Item 2.02": "...",
+      "Item 9.01": "..."
+    }
+  }
+}
+```
 
-- **[Model Context Protocol (MCP)](https://modelcontextprotocol.io/)** – Official documentation and SDKs. ModelContextProtocol.io – An open standard for connecting LLMs to tools.
+### `get_filing_sections(identifier: str, accession_number: str, form_type: str)`
 
-- **[EdgarTools](https://github.com/dgunning/edgartools)** – A modern Python library for accessing SEC EDGAR data with powerful filing analysis capabilities. [GitHub repo](https://github.com/dgunning/edgartools), [Documentation](https://dgunning.github.io/edgartools/).
+Get specific sections from a filing (e.g., business description, risk factors, MD&A).
 
+**Inputs:**
 
-## License ⚖️
+- `identifier` (str): Company ticker symbol or CIK number.
+- `accession_number` (str): The accession number of the filing.
+- `form_type` (str): The type of form (e.g., "10-K", "10-Q").
 
-This project is licensed under the [MIT License](LICENSE). You are free to use, modify, and distribute it. See the LICENSE file for details.
+**Output:**
 
----
+A dictionary containing available sections from the filing.
 
-© 2025 [Stefano Amorelli](https://amorelli.tech) – Released under the [MIT license](LICENSE).  Enjoy! 🎉
+**Example:**
 
+```json
+{
+  "success": true,
+  "form_type": "8-K",
+  "sections": {},
+  "available_sections": []
+}
+```

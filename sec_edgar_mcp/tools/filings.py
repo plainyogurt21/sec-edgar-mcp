@@ -194,8 +194,8 @@ class FilingsTools:
                             if hasattr(exhibit, 'text'):
                                 exhibit_content = exhibit.text()
                                 # Limit content size for reasonable response
-                                if len(exhibit_content) > 50000:
-                                    exhibit_info["content"] = exhibit_content[:50000] + "\n\n... [truncated - content too long]"
+                                if len(exhibit_content) > 1000:
+                                    exhibit_info["content"] = exhibit_content[:1000] + "\n\n... [truncated - content too long]"
                                     exhibit_info["content_truncated"] = True
                                     exhibit_info["original_length"] = len(exhibit_content)
                                 else:
@@ -227,8 +227,8 @@ class FilingsTools:
                                 try:
                                     pr_content = pr_attachment.text()
                                     # Limit press release content size
-                                    if len(pr_content) > 40000:
-                                        pr_info["content"] = pr_content[:40000] + "\n\n... [truncated - content too long]"
+                                    if len(pr_content) > 1000:
+                                        pr_info["content"] = pr_content[:1000] + "\n\n... [truncated - content too long]"
                                         pr_info["content_truncated"] = True
                                         pr_info["original_length"] = len(pr_content)
                                     else:

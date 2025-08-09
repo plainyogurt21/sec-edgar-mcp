@@ -1,5 +1,6 @@
 build:
   dockerBuildPath: .
+  dockerfilePath: Dockerfile
 
 startCommand:
   type: stdio
@@ -8,14 +9,15 @@ startCommand:
     properties:
       userAgent:
         type: string
-        description: Optional user agent string for SEC EDGAR API requests (defaults to edgartools default)
+        description: Optional user agent string for SEC requests
         default: "Adu Subramanian (1wholepackage@gmail.com)"
-    additionalProperties: false
   commandFunction: |-
     (config) => ({
-      command: 'python',
-      args: ['sec_edgar_mcp/server.py'],
-      env: config.userAgent ? { 'SEC_EDGAR_USER_AGENT': config.userAgent } : {}
+      command: "python",
+      args: ["-m", "sec_edgar_mcp.server"],
+      env: {
+        SEC_EDGAR_USER_AGENT: config.userAgent || "Adu Subramanian (1wholepackage@gmail.com)"
+      }
     })
 
 exampleConfig:

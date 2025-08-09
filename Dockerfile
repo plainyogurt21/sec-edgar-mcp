@@ -1,29 +1,29 @@
-FROM python:3.13-slim
+FROM python:3.11-slim
 
-# Install server dependencies
-RUN pip install --no-cache-dir "mcp[cli]>=1.7.1" "edgartools" "packaging" "requests" "python-dotenv"
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Copy source
 WORKDIR /app
+
+# Faster, cleaner builds
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Copy only metadata first for better layer caching (if present)
+COPY pyproject.toml ./
+# If you have a lock file, copy it too:
+# COPY uv.lock ./
+
+# Install runtime deps. Prefer installing your package so its deps come in too.
+# If your project has a proper pyproject.toml, this will pull everything:
+#   pip install .
+# If not, fall back to explicit libs you need:
+RUN pip install --no-cache-dir "mcp>=1.0.0" "edgartools" "requests" "python-dotenv" "packaging"
+
+# Now copy the source
 COPY . .
 
-# Ensure local package is discoverable
+# Make local package discoverable
 ENV PYTHONPATH=/app
 
-# The server requires NASDAQ_DATA_LINK_API_KEY to be set at runtime
-# Example mcpServers config for your client:
-# 
-# "mcpServers": {
-#   "sec-edgar-mcp": {
-#     "command": "docker",
-#     "args": [
-#       "run",
-#       "--rm",
-#       "-i",
-#       "-e", "SEC_EDGAR_USER_AGENT=<First Name, Last name (your@email.com)>",
-#       "stefanoamorelli/nasdaq-data-link-mcp:latest"
-#     ]
-#   }
-# }
-
-CMD ["python", "sec_edgar_mcp/server.py"]
+# IMPORTANT: run as a module so relative imports work
+CMD ["python", "-m", "sec_edgar_mcp.server"]

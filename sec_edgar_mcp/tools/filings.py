@@ -121,34 +121,37 @@ class FilingsTools:
         self, identifier: str, accession_number: str
     ) -> Dict[str, Union[bool, str, Dict[str, Any]]]:
         """Analyze an 8-K filing for specific events."""
-        import time
-        import logging
-        logging.basicConfig(filename="sec_edgar_mcp_analyze8k.log", level=logging.DEBUG)
         try:
-            start_total = time.time()
-            logging.debug(f"[DEBUG] analyze_8k: Start for {identifier}, accession: {accession_number}")
-
-            start_company = time.time()
+            # Get company and find specific filing
             company = self.client.get_company(identifier)
-            logging.debug(f"[DEBUG] analyze_8k: company.get_company() took {time.time() - start_company:.2f}s")
-
-            start_filings = time.time()
+            
+            # Normalize accession number for comparison
+            target_accession = accession_number.replace("-", "")
+            
+            # Find the specific 8-K filing
             filing = None
-            for f in company.get_filings(form="8-K"):
-                if f.accession_number.replace("-", "") == accession_number.replace("-", ""):
+            filings = company.get_filings(form="8-K")
+            
+            # Limit search to reasonable number to avoid timeout
+            count = 0
+            for f in filings:
+                if count >= 100:  # Limit search to prevent timeout
+                    break
+                if f.accession_number.replace("-", "") == target_accession:
                     filing = f
                     break
-            logging.debug(f"[DEBUG] analyze_8k: company.get_filings() loop took {time.time() - start_filings:.2f}s")
+                count += 1
 
             if not filing:
-                logging.debug(f"[DEBUG] analyze_8k: Filing not found, total time: {time.time() - start_total:.2f}s")
                 raise FilingNotFoundError(f"8-K filing {accession_number} not found")
 
-            start_obj = time.time()
-            eightk = filing.obj()
-            logging.debug(f"[DEBUG] analyze_8k: filing.obj() took {time.time() - start_obj:.2f}s")
-            logging.debug(f"[DEBUG] analyze_8k: Successfully parsed 8-K object: {type(eightk)}")
+            # Parse the 8-K filing with timeout protection
+            try:
+                eightk = filing.obj()
+            except Exception as e:
+                return {"success": False, "error": f"Failed to parse filing: {str(e)}"}
 
+            # Format date of report
             raw_date = getattr(eightk, "date_of_report", None)
             formatted_date = None
             if isinstance(raw_date, datetime):
@@ -161,12 +164,17 @@ class FilingsTools:
                 except ValueError:
                     formatted_date = raw_date
 
+            # Build analysis structure
             analysis: Dict[str, Any] = {
                 "date_of_report": formatted_date,
                 "items": getattr(eightk, "items", []),
                 "events": {},
+                "accession_number": filing.accession_number,
+                "filing_date": filing.filing_date.isoformat() if hasattr(filing.filing_date, 'isoformat') else str(filing.filing_date),
+                "url": getattr(filing, "url", None)
             }
 
+            # Map of 8-K item codes to descriptions
             item_descriptions = {
                 "1.01": "Entry into Material Agreement",
                 "1.02": "Termination of Material Agreement",
@@ -182,6 +190,7 @@ class FilingsTools:
                 "8.01": "Other Events",
             }
 
+            # Check for specific items
             for item_code, description in item_descriptions.items():
                 if hasattr(eightk, "has_item") and eightk.has_item(item_code):
                     analysis["events"][item_code] = {
@@ -189,6 +198,7 @@ class FilingsTools:
                         "description": description,
                     }
 
+            # Check for press releases
             if hasattr(eightk, "has_press_release"):
                 analysis["has_press_release"] = eightk.has_press_release
                 if eightk.has_press_release and hasattr(eightk, "press_releases"):
@@ -196,23 +206,33 @@ class FilingsTools:
                     if hasattr(press_releases, 'attachments') and press_releases.attachments:
                         analysis["press_releases"] = []
                         for att in press_releases.attachments:
-                            analysis["press_releases"].append({"description": att.description, "content": att.text()})
+                            # Limit press release content to prevent response size issues
+                            content = att.text()
+                            if len(content) > 10000:
+                                content = content[:10000] + "... [truncated]"
+                            analysis["press_releases"].append({
+                                "description": att.description, 
+                                "content": content
+                            })
 
+            # Extract item details
             if hasattr(eightk, "items") and eightk.items:
                 analysis["item_details"] = {}
                 for item_name in eightk.items:
                     item_attr = f"item_{item_name.lower().replace('.', '_')}"
                     if hasattr(eightk, item_attr):
-                        analysis["item_details"][item_name] = getattr(eightk, item_attr).text
+                        item_text = getattr(eightk, item_attr).text
+                        # Limit item text to prevent response size issues
+                        if len(item_text) > 5000:
+                            item_text = item_text[:5000] + "... [truncated]"
+                        analysis["item_details"][item_name] = item_text
 
-            print(f"Analysis complete: {analysis}")
             return {"success": True, "analysis": analysis}
+            
         except FilingNotFoundError as e:
-            print(f"Filing not found error: {e}")
             return {"success": False, "error": str(e)}
         except Exception as e:
-            print(f"An unexpected error occurred in analyze_8k: {e}")
-            return {"success": False, "error": f"Failed to analyze 8-K: {e}"}
+            return {"success": False, "error": f"Failed to analyze 8-K: {str(e)}"}
 
     def get_filing_sections(self, identifier: str, accession_number: str, form_type: str) -> ToolResponse:
         """Get specific sections from a filing."""

@@ -1,0 +1,8 @@
+"mcp[cli]>=1.7.1"
+edgartools>=4.4.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+packaging>=23.0
+# Optional but recommended for HTTP mode (CORS + explicit server)
+fastapi>=0.110
+uvicorn[standard]>=0.23

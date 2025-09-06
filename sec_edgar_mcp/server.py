@@ -1,10 +1,15 @@
 import argparse
+import os
+from typing import Optional
 from mcp.server.fastmcp import FastMCP
 from sec_edgar_mcp.tools import CompanyTools, FilingsTools, FinancialTools, SearchTools
 
 
 # Initialize MCP server
-mcp = FastMCP("SEC EDGAR MCP", dependencies=["edgartools"], request_timeout=300 )
+mcp = FastMCP("SEC EDGAR MCP", dependencies=["edgartools"]) 
+
+# HTTP app is created only if/when HTTP transport is selected
+http_app: Optional[object] = None
 
 # Add system-wide instructions for deterministic responses
 DETERMINISTIC_INSTRUCTIONS = """
@@ -419,11 +424,99 @@ def get_recommended_tools(form_type: str):
 def main():
     """Main entry point for the MCP server."""
     parser = argparse.ArgumentParser(description="SEC EDGAR MCP Server - Access SEC filings and financial data")
-    parser.add_argument("--transport", default="stdio", help="Transport method")
+    parser.add_argument("--transport", default=None, help="Transport method: stdio or http")
+    parser.add_argument("--host", default=None, help="HTTP host (when using http transport)")
+    parser.add_argument("--port", default=None, help="HTTP port (when using http transport)")
     args = parser.parse_args()
 
-    # Run the MCP server
-    mcp.run(transport=args.transport)
+    # Transport selection: CLI > TRANSPORT env > infer from PORT env > default stdio
+    inferred = "http" if os.getenv("PORT") else None
+    transport = (args.transport or os.getenv("TRANSPORT") or inferred or "stdio").strip().lower()
+
+    if transport == "http":
+        global http_app
+        if http_app is None:
+            # Create streamable HTTP app if available, fallback to basic http app
+            try:
+                http_app = mcp.streamable_http_app()
+            except AttributeError:
+                try:
+                    http_app = mcp.http_app()
+                except Exception as e:
+                    raise RuntimeError(
+                        "FastMCP HTTP app is unavailable. Please upgrade 'mcp' to a version that supports HTTP."
+                    ) from e
+
+            # Add CORS if FastAPI is available; otherwise continue
+            try:
+                from fastapi.middleware.cors import CORSMiddleware  # type: ignore
+
+                http_app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=["*"],
+                    allow_credentials=True,
+                    allow_methods=["*"],
+                    allow_headers=["*"],
+                )
+            except Exception:
+                pass
+
+            # Add basic root/health routes for platform scanners (FastAPI or Starlette)
+            try:
+                def _root_fastapi():
+                    return {
+                        "status": "ok",
+                        "name": "SEC EDGAR MCP",
+                        "transport": "http",
+                        "message": "MCP HTTP server is running",
+                    }
+
+                def _healthz_fastapi():
+                    return {"status": "ok"}
+
+                add_api_route = getattr(http_app, "add_api_route", None)
+                if callable(add_api_route):
+                    http_app.add_api_route("/", _root_fastapi, methods=["GET"])  # type: ignore[attr-defined]
+                    http_app.add_api_route("/healthz", _healthz_fastapi, methods=["GET"])  # type: ignore[attr-defined]
+                else:
+                    from starlette.responses import JSONResponse  # type: ignore
+
+                    async def _root_starlette(request):  # type: ignore
+                        return JSONResponse(
+                            {
+                                "status": "ok",
+                                "name": "SEC EDGAR MCP",
+                                "transport": "http",
+                                "message": "MCP HTTP server is running",
+                            }
+                        )
+
+                    async def _healthz_starlette(request):  # type: ignore
+                        return JSONResponse({"status": "ok"})
+
+                    add_route = getattr(http_app, "add_route", None)
+                    if callable(add_route):
+                        http_app.add_route("/", _root_starlette, methods=["GET"])  # type: ignore[attr-defined]
+                        http_app.add_route("/healthz", _healthz_starlette, methods=["GET"])  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+        host = (args.host or os.getenv("HOST") or "0.0.0.0").strip()
+        port_str = (args.port or os.getenv("PORT") or "8081").strip()
+        try:
+            port = int(port_str)
+        except ValueError:
+            port = 8081
+
+        try:
+            import uvicorn  # type: ignore
+        except Exception as e:
+            raise RuntimeError("uvicorn is required for HTTP transport. Install 'uvicorn'.") from e
+
+        uvicorn.run(http_app, host=host, port=port)
+    else:
+        # Default to stdio transport
+        mcp.run(transport=transport)
 
 
 if __name__ == "__main__":

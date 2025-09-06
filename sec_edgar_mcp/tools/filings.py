@@ -1,5 +1,5 @@
 from typing import Dict, Union, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, date
 from edgar import get_filings
 from ..core.client import EdgarClient
 from ..core.models import FilingInfo
@@ -42,8 +42,15 @@ class FilingsTools:
                 filing_date = filing.filing_date
                 if isinstance(filing_date, str):
                     filing_date = datetime.fromisoformat(filing_date.replace("Z", "+00:00"))
-                if (now - filing_date).days <= days:
-                    filtered_filings.append(filing)
+                # Normalize dates to datetime for subtraction
+                if isinstance(filing_date, date) and not isinstance(filing_date, datetime):
+                    filing_date = datetime.combine(filing_date, datetime.min.time())
+                if isinstance(filing_date, datetime):
+                    if (now - filing_date).days <= days:
+                        filtered_filings.append(filing)
+                    continue
+                # If unrecognized type, include conservatively
+                filtered_filings.append(filing)
 
             # Limit results
             filings_list = []

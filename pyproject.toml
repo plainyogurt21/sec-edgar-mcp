@@ -19,6 +19,12 @@ dependencies = [
   "mcp[cli]>=1.7.1",
   "edgartools>=4.4.0",
   "requests>=2.31.0",
+  "python-dotenv>=1.0.0",
+  "packaging>=23.0",
+  # HTTP mode dependencies
+  "uvicorn[standard]>=0.23",
+  # FastAPI is optional; server runs with Starlette fallback but FastAPI enables CORS middleware
+  "fastapi>=0.110",
 ]
 
 [tool.setuptools]

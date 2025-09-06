@@ -541,6 +541,27 @@ def main():
                 # If FastAPI isn't present or middleware can't be added, continue without CORS
                 pass
 
+            # Add simple health and root endpoints to help platform scanners
+            try:
+                # Starlette/FastAPI style apps expose add_api_route
+                def _root():
+                    return {
+                        "status": "ok",
+                        "name": "SEC EDGAR MCP",
+                        "transport": "http",
+                        "message": "MCP HTTP server is running",
+                    }
+
+                def _healthz():
+                    return {"status": "ok"}
+
+                add_route = getattr(http_app, "add_api_route", None)
+                if callable(add_route):
+                    http_app.add_api_route("/", _root, methods=["GET"])  # type: ignore[attr-defined]
+                    http_app.add_api_route("/healthz", _healthz, methods=["GET"])  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
         host = (args.host or os.getenv("HOST") or "0.0.0.0").strip()
         port_str = (args.port or os.getenv("PORT") or "8081").strip()
         try:

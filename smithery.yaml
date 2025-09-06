@@ -2,21 +2,18 @@ build:
   dockerBuildPath: .
 
 startCommand:
-  type: stdio
+  type: http
+  # The container's Dockerfile sets TRANSPORT=http and starts the server
+  # Smithery will connect to the HTTP server on this port
+  port: 8081
   configSchema:
     type: object
     properties:
       userAgent:
         type: string
-        description: Optional user agent string for SEC EDGAR API requests (defaults to edgartools default)
+        description: Optional user agent string for SEC EDGAR API requests; passed via environment as EDGAR_USER_AGENT
         default: "Adu Subramanian (1wholepackage@gmail.com)"
     additionalProperties: false
-  commandFunction: |-
-    (config) => ({
-      command: 'python',
-      args: ['-m', 'sec_edgar_mcp.server'],
-      env: config.userAgent ? { 'EDGAR_USER_AGENT': config.userAgent } : {}
-    })
 
 exampleConfig:
   userAgent: "Adu Subramanian (1wholepackage@gmail.com)"

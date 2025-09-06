@@ -1,10 +1,15 @@
 import argparse
+import os
 from mcp.server.fastmcp import FastMCP
+from typing import Optional
 from sec_edgar_mcp.tools import CompanyTools, FilingsTools, FinancialTools, InsiderTools
 
 
 # Initialize MCP server
 mcp = FastMCP("SEC EDGAR MCP", dependencies=["edgartools"])
+
+# Optional: HTTP app placeholder (created only when needed)
+http_app: Optional[object] = None
 
 # Add system-wide instructions for deterministic responses
 DETERMINISTIC_INSTRUCTIONS = """
@@ -495,11 +500,66 @@ def get_recommended_tools(form_type: str):
 def main():
     """Main entry point for the MCP server."""
     parser = argparse.ArgumentParser(description="SEC EDGAR MCP Server - Access SEC filings and financial data")
-    parser.add_argument("--transport", default="stdio", help="Transport method")
+    parser.add_argument("--transport", default=None, help="Transport method: stdio or http")
+    parser.add_argument("--host", default=None, help="HTTP host (when using http transport)")
+    parser.add_argument("--port", default=None, help="HTTP port (when using http transport)")
     args = parser.parse_args()
 
-    # Run the MCP server
-    mcp.run(transport=args.transport)
+    # Decide transport (CLI > env > default)
+    transport = (args.transport or os.getenv("TRANSPORT") or "stdio").strip().lower()
+
+    if transport == "http":
+        # Build HTTP app (streamable) and run with uvicorn
+        global http_app
+        if http_app is None:
+            # Create the HTTP app using FastMCP's streamable HTTP support
+            try:
+                http_app = mcp.streamable_http_app()
+            except AttributeError:
+                # Fallback for older FastMCP versions that may use a different name
+                # Try common alternatives before failing hard
+                try:
+                    http_app = mcp.http_app()
+                except Exception as e:
+                    raise RuntimeError(
+                        "FastMCP does not support streamable HTTP in this version. "
+                        "Please upgrade 'mcp' to >= 1.7.1."
+                    ) from e
+
+            # Add permissive CORS for browser-based clients (if available)
+            try:
+                from fastapi.middleware.cors import CORSMiddleware  # type: ignore
+
+                http_app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=["*"],
+                    allow_credentials=True,
+                    allow_methods=["*"],
+                    allow_headers=["*"],
+                )
+            except Exception:
+                # If FastAPI isn't present or middleware can't be added, continue without CORS
+                pass
+
+        host = (args.host or os.getenv("HOST") or "0.0.0.0").strip()
+        port_str = (args.port or os.getenv("PORT") or "8081").strip()
+        try:
+            port = int(port_str)
+        except ValueError:
+            port = 8081
+
+        # Run the ASGI app
+        try:
+            import uvicorn  # type: ignore
+        except Exception as e:
+            raise RuntimeError(
+                "uvicorn is required to run the HTTP server. Please install 'uvicorn'."
+            ) from e
+
+        uvicorn.run(http_app, host=host, port=port)
+    else:
+        # Default to stdio transport
+        mcp.run(transport=transport)
 
 
 if __name__ == "__main__":

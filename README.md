@@ -55,3 +55,9 @@ Keyword search across multiple SEC filings using edgartools' text search.
 - Purpose: Search filings for a keyword/phrase, filter by company, form type, and date range, return paginated, chronologically ordered results.
 - Notes: Requires edgartools with TextSearch support. If unavailable, the tool returns a clear error message.
 - Returns: `{ success, results, page, page_size, total, total_pages, order }` where each result includes `accession_number`, `filing_date`, `form_type`, `company_name`, `cik`, `url`, and a `snippet`.
+
+## Docker
+
+- Build image: `docker build -t sec-edgar-mcp .`
+- Run server: `docker run --rm -e SEC_EDGAR_USER_AGENT="Your Name (email@example.com)" -p 8000:8000 sec-edgar-mcp`
+- Notes: The image installs this package via `pyproject.toml` (`pip install .`), avoiding a `requirements.txt`. Dependencies include `mcp[cli]>=1.7.1`, `edgartools`, and `requests`.

@@ -56,6 +56,22 @@ Keyword search across multiple SEC filings using edgartools' text search.
 - Notes: Requires edgartools with TextSearch support. If unavailable, the tool returns a clear error message.
 - Returns: `{ success, results, page, page_size, total, total_pages, order }` where each result includes `accession_number`, `filing_date`, `form_type`, `company_name`, `cik`, `url`, and a `snippet`.
 
+## Manifest and Dispatcher
+
+- `list_tools()`: Returns a JSON manifest of available MCP tools with names, descriptions, and parameter info. Use this first to inspect capabilities.
+- `dispatch_tool(description: str, arguments: dict | None = None, dry_run: bool = False)`: Selects the best tool based on a natural-language `description` and optionally executes it with `arguments` (only matching parameters are passed). If `dry_run` is `true`, it only returns the selected tool and signature without execution.
+
+Example:
+
+```
+list_tools()
+
+dispatch_tool(
+  description="get latest 10-K financials for NVDA",
+  arguments={"identifier": "NVDA", "statement_type": "all"}
+)
+```
+
 ## Docker
 
 - Build image: `docker build -t sec-edgar-mcp .`

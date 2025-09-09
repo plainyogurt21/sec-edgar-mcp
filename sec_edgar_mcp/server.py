@@ -1,6 +1,8 @@
 import argparse
 import os
-from typing import Optional
+import inspect
+import re
+from typing import Optional, Any, Dict
 from mcp.server.fastmcp import FastMCP
 from sec_edgar_mcp.tools import CompanyTools, FilingsTools, FinancialTools, SearchTools
 
@@ -47,6 +49,33 @@ company_tools = CompanyTools()
 filings_tools = FilingsTools()
 financial_tools = FinancialTools()
 search_tools = SearchTools()
+
+# Centralized list of MCP tool function names to expose in the manifest.
+# This avoids guessing FastMCP internals and keeps things explicit and readable.
+TOOL_NAMES = [
+    # Company
+    "get_cik_by_ticker",
+    "get_company_info",
+    "search_companies",
+    "get_company_facts",
+    # Filings
+    "get_recent_filings",
+    "get_filing_content",
+    "analyze_8k",
+    "get_filing_sections",
+    # Search
+    "search_filings_text",
+    # Financial
+    "get_financials",
+    "get_segment_data",
+    "get_key_metrics",
+    "compare_periods",
+    "discover_company_metrics",
+    "get_xbrl_concepts",
+    "discover_xbrl_concepts",
+    # Utility
+    "get_recommended_tools",
+]
 
 
 # Company Tools
@@ -419,6 +448,142 @@ def get_recommended_tools(form_type: str):
             "message": "No specific recommendations available for this form type",
             "general_tools": ["get_filing_content", "get_recent_filings"],
         }
+
+
+# Manifest + Dispatcher
+def _build_tool_manifest() -> Dict[str, Any]:
+    """Build a JSON-serializable manifest of available tools using signatures/docstrings.
+
+    Returns:
+        dict with keys: tools (list), count (int)
+    """
+    tools = []
+    for name in TOOL_NAMES:
+        func = globals().get(name)
+        if not callable(func):
+            continue
+        try:
+            sig = inspect.signature(func)
+        except Exception:
+            sig = None
+        params = []
+        if sig:
+            for p in sig.parameters.values():
+                # Only expose simple metadata for readability
+                default = None if p.default is inspect._empty else p.default
+                annotation = None if p.annotation is inspect._empty else p.annotation
+                ann_str = None
+                try:
+                    ann_str = annotation.__name__  # type: ignore[attr-defined]
+                except Exception:
+                    ann_str = str(annotation) if annotation is not None else None
+                params.append(
+                    {
+                        "name": p.name,
+                        "kind": str(p.kind),
+                        "type": ann_str,
+                        "default": default,
+                    }
+                )
+        tools.append(
+            {
+                "name": name,
+                "description": (globals().get(name).__doc__ or "").strip(),
+                "parameters": params,
+            }
+        )
+    return {"tools": tools, "count": len(tools)}
+
+
+def _score_tool_match(description: str, tool: Dict[str, Any]) -> int:
+    """Very simple keyword overlap scoring between description and tool metadata.
+
+    KISS: tokenize on words, overlap name + description. No external deps.
+    """
+    text = f"{tool.get('name','')} {(tool.get('description') or '')}"
+    to_words = lambda s: set(re.findall(r"[A-Za-z0-9_]+", s.lower()))
+    d_words = to_words(description)
+    t_words = to_words(text)
+    # Heavier weight on exact tool-name token hits
+    name_words = to_words(tool.get("name", ""))
+    return len(d_words & t_words) + 2 * len(d_words & name_words)
+
+
+def _call_tool_safely(func, provided: Dict[str, Any]) -> Dict[str, Any]:
+    """Call a tool by filtering kwargs to its signature and returning JSON error on failure."""
+    try:
+        sig = inspect.signature(func)
+        allowed = {p.name for p in sig.parameters.values()}
+        filtered = {k: v for k, v in (provided or {}).items() if k in allowed}
+        result = func(**filtered)
+        return {"success": True, "result": result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool("list_tools")
+def list_tools():
+    """
+    Return a JSON manifest of available MCP tools including names, descriptions, and parameters.
+
+    Use this to inspect capabilities before choosing a tool.
+    """
+    try:
+        return _build_tool_manifest()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool("dispatch_tool")
+def dispatch_tool(description: str, arguments: dict | None = None, dry_run: bool = False):
+    """
+    Choose and (optionally) invoke the best tool based on a natural-language description.
+
+    Args:
+        description: Natural-language description of the intent (e.g., "get latest 10-K financials for NVDA").
+        arguments: Optional dict of arguments to pass to the chosen tool (only matching params are used).
+        dry_run: If True, do not execute; only return selected tool and its signature.
+
+    Returns:
+        On success: { success, selected_tool, score, dry_run, (result|signature) }
+        On error:   { success: False, error }
+    """
+    try:
+        manifest = _build_tool_manifest()
+        tools = manifest.get("tools", [])
+        if not tools:
+            return {"success": False, "error": "No tools available"}
+
+        scored = [
+            (t, _score_tool_match(description, t))
+            for t in tools
+        ]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        best, score = scored[0]
+
+        name = best["name"]
+        func = globals().get(name)
+        if not callable(func):
+            return {"success": False, "error": f"Selected tool '{name}' is not callable"}
+
+        if dry_run:
+            return {
+                "success": True,
+                "selected_tool": name,
+                "score": score,
+                "dry_run": True,
+                "signature": best,
+            }
+
+        return {
+            "success": True,
+            "selected_tool": name,
+            "score": score,
+            "dry_run": False,
+            **_call_tool_safely(func, arguments or {}),
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 def main():

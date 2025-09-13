@@ -4,11 +4,19 @@ import inspect
 import re
 from typing import Optional, Any, Dict
 from mcp.server.fastmcp import FastMCP
-from sec_edgar_mcp.tools import CompanyTools, FilingsTools, FinancialTools, SearchTools
+from sec_edgar_mcp.tools import FinancialTools, ResultsTools
 
 
 # Initialize MCP server
 mcp = FastMCP("SEC EDGAR MCP", dependencies=["edgartools"]) 
+
+# KISS: disable auto-registration from legacy decorators, we will explicitly register
+__register_tool = mcp.tool
+def __noop_tool(name: str):
+    def _decorator(fn):
+        return fn
+    return _decorator
+mcp.tool = __noop_tool  # type: ignore
 
 # HTTP app is created only if/when HTTP transport is selected
 http_app: Optional[object] = None
@@ -44,88 +52,58 @@ CRITICAL: NEVER round numbers like "$37.0B" - always show exact values like "$37
 YOU ARE A FILING DATA EXTRACTION SERVICE, NOT A FINANCIAL ANALYST OR ADVISOR.
 """
 
-# Initialize tool classes
-company_tools = CompanyTools()
-filings_tools = FilingsTools()
+# Initialize minimal tool classes
 financial_tools = FinancialTools()
-search_tools = SearchTools()
+results_tools = ResultsTools()
 
 # Centralized list of MCP tool function names to expose in the manifest.
 # This avoids guessing FastMCP internals and keeps things explicit and readable.
 TOOL_NAMES = [
-    # Company
-    "get_cik_by_ticker",
-    "get_company_info",
-    "search_companies",
-    "get_company_facts",
-    # Filings
-    "get_recent_filings",
-    "get_filing_content",
-    "analyze_8k",
-    "get_filing_sections",
-    # Search
-    "search_filings_text",
-    # Financial
-    "get_financials",
-    "get_segment_data",
-    "get_key_metrics",
-    "compare_periods",
-    "discover_company_metrics",
-    "get_xbrl_concepts",
-    "discover_xbrl_concepts",
-    # Utility
-    "get_recommended_tools",
+    "get_financial_statements",
+    "get_recent_financial_results",
+    "get_all_recent_8k",
 ]
 
 
-# Company Tools
-@mcp.tool("get_cik_by_ticker")
-def get_cik_by_ticker(ticker: str):
+def get_financial_statements(identifier: str, statement: str = "all", period_type: str = "quarter", periods: int = 1):
     """
-    Get the CIK (Central Index Key) for a company based on its ticker symbol.
+    Get income, balance, and/or cash flow statements for the last N quarters or years.
 
     Args:
-        ticker: The ticker symbol of the company (e.g., "NVDA", "AAPL")
+        identifier: Company ticker or CIK
+        statement: "income" | "balance" | "cash" | "all"
+        period_type: "quarter" or "year"
+        periods: number of periods to include (default: 1)
 
     Returns:
-        Dictionary containing the CIK number or error message
+        Statements keyed by filing date with filing references and exact values from XBRL.
     """
-    return company_tools.get_cik_by_ticker(ticker)
+    return financial_tools.get_financial_statements(identifier, statement, period_type, periods)
 
 
-@mcp.tool("get_company_info")
-def get_company_info(identifier: str):
+def get_recent_financial_results(identifier: str, count: int = 1):
     """
-    Get detailed information about a company from SEC records.
+    Get the most recent financial-results press releases (8-K/6-K).
 
-    CRITICAL INSTRUCTIONS FOR LLM RESPONSES:
-    - ONLY use data returned from SEC records. NEVER add external information.
-    - ALWAYS include any filing reference information if provided.
-    - Be completely deterministic - same query should always give same response.
-    - If information is not in SEC records, say "Not available in SEC records".
-
-    Args:
-        identifier: Company ticker symbol or CIK number
-
-    Returns:
-        Dictionary containing company information from SEC records including name, CIK, SIC, exchange, etc.
+    Returns FilingText, FilingURL(s), FilingDate, AccessionNumber, and FormType.
     """
-    return company_tools.get_company_info(identifier)
+    return results_tools.get_recent_financial_results(identifier, count)
 
-
-@mcp.tool("search_companies")
-def search_companies(query: str, limit: int = 10):
+def get_all_recent_8k(identifier: str, count: int = 10):
     """
-    Search for companies by name.
+    List the most recent 8-K or 6-K filings for a company, regardless of type.
 
-    Args:
-        query: Search query for company name
-        limit: Maximum number of results to return (default: 10)
-
-    Returns:
-        Dictionary containing list of matching companies
+    Returns accession_number, filing_date, form_type, company_name, cik, and URL.
     """
-    return company_tools.search_companies(query, limit)
+    return results_tools.get_all_recent_8k(identifier, count)
+
+# Explicitly register only the minimal tools
+__register_tool("get_financial_statements")(get_financial_statements)
+__register_tool("get_recent_financial_results")(get_recent_financial_results)
+__register_tool("get_all_recent_8k")(get_all_recent_8k)
+
+# Restore the original decorator for any future use
+mcp.tool = __register_tool  # type: ignore
 
 
 @mcp.tool("get_company_facts")

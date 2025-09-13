@@ -212,6 +212,113 @@ class FinancialTools:
         except Exception as e:
             return {"success": False, "error": f"Failed to get financials: {str(e)}"}
 
+    def get_financial_statements(
+        self,
+        identifier: str,
+        statement: str = "all",
+        period_type: str = "quarter",
+        periods: int = 1,
+    ) -> ToolResponse:
+        """
+        Get income, balance, and/or cash flow statements for the last N quarters or years.
+
+        Args:
+            identifier: Ticker or CIK
+            statement: one of "income" | "balance" | "cash" | "all"
+            period_type: "quarter" or "year"
+            periods: number of periods to return (>=1)
+
+        Returns:
+            { success, statements: { period_key: { income_statement|balance_sheet|cash_flow } }, filing_references: [...] }
+        """
+        try:
+            statement = (statement or "all").lower()
+            period_type = (period_type or "quarter").lower()
+            periods = max(1, int(periods))
+
+            company = self.client.get_company(identifier)
+
+            form = "10-Q" if period_type == "quarter" else "10-K"
+            try:
+                filings_iter = company.get_filings(form=form).head(periods)
+                filings = list(filings_iter)
+            except Exception:
+                filings = []
+
+            if not filings:
+                return {"success": False, "error": f"No {form} filings found"}
+
+            out = {
+                "success": True,
+                "identifier": identifier,
+                "period_type": form,
+                "periods": periods,
+                "statements": {},
+                "filing_references": [],
+            }
+
+            from edgar.financials import Financials  # lazy import
+
+            for filing in filings:
+                ref = {
+                    "filing_date": getattr(filing, "filing_date", None),
+                    "accession_number": getattr(filing, "accession_number", None),
+                    "form_type": form,
+                    "sec_url": f"https://www.sec.gov/Archives/edgar/data/{company.cik}/{filing.accession_number.replace('-', '')}/{filing.accession_number}.txt",
+                    "filing_url": getattr(filing, "url", None),
+                }
+
+                try:
+                    fin = None
+                    try:
+                        fin = Financials.extract(filing)
+                    except Exception:
+                        # fallback: annual vs quarterly helper
+                        fin = company.get_quarterly_financials() if form == "10-Q" else company.get_financials()
+
+                    per_key = str(getattr(filing, "filing_date", ""))
+                    out["statements"][per_key] = {}
+
+                    def _put(kind: str, frame):
+                        if frame is not None and hasattr(frame, "to_dict"):
+                            out["statements"][per_key][kind] = {
+                                "data": frame.to_dict(orient="index"),
+                                "columns": list(frame.columns),
+                                "index": list(frame.index),
+                            }
+
+                    if statement in ("income", "all"):
+                        try:
+                            _put("income_statement", fin.income_statement())
+                        except Exception:
+                            pass
+                    if statement in ("balance", "all"):
+                        try:
+                            _put("balance_sheet", fin.balance_sheet())
+                        except Exception:
+                            pass
+                    if statement in ("cash", "all"):
+                        try:
+                            _put("cash_flow", fin.cashflow_statement())
+                        except Exception:
+                            pass
+
+                    out["filing_references"].append(ref)
+                except Exception as e:
+                    out.setdefault("errors", []).append(str(e))
+
+            # Ensure at least one statement made it through
+            if not any(out["statements"].values()):
+                return {"success": False, "error": "No statements extracted from filings"}
+
+            # Deterministic disclosure
+            out["disclaimer"] = (
+                "All data extracted directly from SEC EDGAR filings with exact precision. No estimates or rounding."
+            )
+            return out
+        except Exception as e:
+            return {"success": False, "error": f"Failed to get financial statements: {str(e)}"}
+
     def _extract_income_statement(self, xbrl_data):
         """Extract income statement items from XBRL data."""
         income_concepts = [
